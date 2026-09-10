@@ -1,15 +1,16 @@
 """
-学搭子自动打卡助手(v1.0)主程序 (main.py)
+学搭子自动打卡助手(v1.1)主程序 (main.py)
 作者: @护盾电池
 项目仓库: https://github.com/Peeeeterr/kassing_signin
 
 一键全自动执行：
   1. 首次运行可通过 -init 命令完成环境与底图初始化向导；
-  2. 运行后默认进行 10 秒缓冲倒计时 (支持 Ctrl+C 取消，或通过 -y 跳过)；
-  3. 自动从 .env 登录账号并匹配当前开放时段；
-  4. 动态生成符合安全半径的随机极坐标定位；
-  5. 从 PhotoStorage/ 依据冷却期调度抽取照片并自适应合成防伪水印；
-  6. 上传照片并提交官方打卡接口。
+  2. 支持 -pause / -resume / -status 快捷控制与检测定时打卡状态；
+  3. 运行后默认进行 10 秒缓冲倒计时 (支持 Ctrl+C 取消，或通过 -y 跳过)；
+  4. 自动从 .env 登录账号并匹配当前开放时段；
+  5. 动态生成符合安全半径的随机极坐标定位；
+  6. 从 PhotoStorage/ 依据冷却期调度抽取照片并自适应合成防伪水印；
+  7. 上传照片并提交官方打卡接口。
 """
 
 import sys
@@ -18,6 +19,7 @@ import time
 import shutil
 import argparse
 from datetime import datetime
+from typing import Optional, List, Dict, Any, Tuple
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if PROJECT_ROOT not in sys.path:
@@ -33,6 +35,13 @@ from kassing_signin.config import (
 )
 from kassing_signin.kassing_api import KassingAPI
 from kassing_signin.watermark import apply_watermark, format_watermark_text
+from kassing_signin.scheduler import (
+    install_system_schedule, uninstall_system_schedule,
+    get_system_schedule_info, compute_recommended_schedules,
+    parse_time_hh_mm
+)
+
+PAUSE_FILE = os.path.join(PROJECT_ROOT, ".pause")
 
 def run_init_wizard():
     """首次运行初始化配置向导"""
@@ -236,18 +245,32 @@ BASE_URL=https://www.kassing.cn
         f.write(env_content)
 
     print("\n" + "=" * 68)
-    print("[+] .env 配置文件已成功生成，初始化完成！")
+    print("[+] .env 配置文件已成功生成！")
     print(f"保存位置: {env_path}")
-    print(f"运行环境: {python_bin}\n")
-    print("后续运行方式:")
-    print("  - 正常打卡 (带10秒缓冲): python main.py")
-    print("  - 立即打卡 (跳过倒计时): python main.py -y")
-    print("  - 自动化定时部署: 详见 README.md")
+    print(f"运行环境: {python_bin}")
+    print("=" * 68)
+
+    # 7. 引导一键配置系统定时打卡
+    print("\n" + "-" * 68)
+    print("【系统定时打卡自动化配置】")
+    print("支持自动向操作系统 (Linux crontab / Windows 任务计划) 注册后台静默打卡任务。")
+    print("-" * 68)
+    ask_cron = input("是否现在一键配置系统定时自动打卡？[Y/n]: ").strip().lower()
+    if ask_cron not in ["n", "no"]:
+        setup_cron_interactive(account=account, password=password)
+    else:
+        print("\n[*] 已跳过定时任务配置。后续若需开启，可在控制台菜单选择 [6] 随时配置。")
+
+    print("\n" + "=" * 68)
+    print("向导已全部完成！日常使用非常简单，直接启动控制台即可：")
+    print("  - Linux / macOS 用户: 在终端运行 ./run.sh")
+    print("  - Windows 用户:       直接双击运行 run.bat 启动")
+    print("进入控制台后，直接输入数字编号即可直观操作（立即签到、查记录、放假暂停等）。")
     print("=" * 68)
 
 def run_countdown(seconds: int = 10):
     """10 秒自动启动倒计时，支持用户按 Ctrl+C 中止"""
-    print(f"[*] 系统已就绪，将在 {seconds} 秒后自动执行签到打卡流程...")
+    print(f"[*] 用户身份与打卡任务确认无误，将在 {seconds} 秒后自动执行签到打卡流程...")
     print("    [提示] 如需中止，请随时按下 [Ctrl + C] 取消。")
     try:
         for remaining in range(seconds, 0, -1):
@@ -258,30 +281,61 @@ def run_countdown(seconds: int = 10):
         print("\n\n[-] 操作已由用户手动取消，已安全退出。")
         sys.exit(0)
 
-def perform_signin(slot_keyword: str = None, dry_run: bool = False, force: bool = False) -> bool:
-    """核心打卡执行全流程"""
+def precheck_and_confirm_user(
+    slot_keyword: Optional[str] = None,
+    force: bool = False
+) -> Tuple[Optional[KassingAPI], Optional[Dict[str, Any]]]:
+    """
+    打卡前置鉴权、用户信息确认与打卡时段检测
+    在进入倒计时或直接打卡前，首先登录验证、确认人员信息与打卡时段。
+    若校验不通过或无需打卡，返回 (None, None)。
+    """
     print("=" * 68)
-    print("        学搭子 (kassing-signin) v1.0 - 自动化智能打卡流程        ")
+    print("                 学搭子 - 打卡前置鉴权与信息确认                 ")
     print("=" * 68)
-    
+    print("[*] 正在连接服务器并验证账号凭据...")
     api = KassingAPI()
-    
-    # 1. 登录
-    print("[1/5] 正在登录学搭子账号...")
-    api.login(DEFAULT_ACCOUNT, DEFAULT_PASSWORD)
-    user_name = api.user_profile.get("name", "")
-    
-    # 2. 查询时段
-    print("[2/5] 正在拉取今日打卡时段...")
-    slots = api.get_today_slots()
+    try:
+        api.login(DEFAULT_ACCOUNT, DEFAULT_PASSWORD)
+    except Exception as e:
+        print(f"\n[错误] 账号登录鉴权失败: {e}")
+        print("    请检查 .env 中的 ACCOUNT 与 PASSWORD 配置，或检查网络连接。")
+        return None, None
+
+    user_name = api.user_profile.get("name") or DEFAULT_ACCOUNT
+    user_no = api.user_profile.get("no") or DEFAULT_ACCOUNT
+    phone = str(api.user_profile.get("phone") or "").strip()
+    phone_display = f"{phone[:3]}****{phone[-4:]}" if len(phone) >= 7 else (phone or "")
+    dept = (
+        api.user_profile.get("deptName")
+        or api.user_profile.get("orgName")
+        or api.user_profile.get("department")
+        or api.user_profile.get("className")
+        or ""
+    )
+
+    print("\n[+] 用户身份确认:")
+    print(f"    - 打卡人员: {user_name} (工号/学号: {user_no})")
+    if dept:
+        print(f"    - 所属组织: {dept}")
+    if phone_display:
+        print(f"    - 绑定手机: {phone_display}")
+
+    print("\n[*] 正在检测今日打卡时段与任务状态...")
+    try:
+        slots = api.get_today_slots()
+    except Exception as e:
+        print(f"[-] 获取今日打卡时段失败: {e}")
+        return None, None
+
     if not slots:
         print("[-] 今日未配置任何打卡任务，无需打卡。")
-        return True
-        
+        return None, None
+
     now_dt = get_beijing_now()
     now_str = now_dt.strftime("%H:%M")
-    print(f"      当前北京时间: {now_str} (东八区)")
-    
+    print(f"    - 当前北京时间: {now_str} (东八区)")
+
     target_slot = None
     if slot_keyword:
         for s in slots:
@@ -290,17 +344,16 @@ def perform_signin(slot_keyword: str = None, dry_run: bool = False, force: bool 
                 break
         if not target_slot:
             print(f"[-] 错误: 未找到名称包含 '{slot_keyword}' 的打卡时段。")
-            return False
+            return None, None
     else:
-        # 策略 A: 优先寻找当前时间处于开放时段且未打卡的时段
+        # 策略 A: 优先寻找当前处于开放中且未打卡的时段
         for s in slots:
             st = s.get("startTime", "")
             et = s.get("endTime", "")
             if st <= now_str <= et and not s.get("signed"):
                 target_slot = s
                 break
-                
-        # 策略 B: 若当前无开放时段，查看是否全部已打卡
+        # 策略 B: 若无开放中时段，检查是否全部已打卡
         if not target_slot:
             unsigned_slots = [s for s in slots if not s.get("signed")]
             if not unsigned_slots:
@@ -310,8 +363,7 @@ def perform_signin(slot_keyword: str = None, dry_run: bool = False, force: bool 
                     signed_time = format_iso_to_cst(rec.get("signedAt", "--"))
                     st = format_record_status(rec.get("status", "normal"))
                     print(f"   [{idx}] {s.get('name')}: [已打卡] ({st} · {signed_time})")
-                return True
-                
+                return None, None
             # 策略 C: 存在未打卡时段，检测最近的一个时段
             for s in unsigned_slots:
                 st = s.get("startTime", "")
@@ -320,7 +372,124 @@ def perform_signin(slot_keyword: str = None, dry_run: bool = False, force: bool 
                     break
             if not target_slot:
                 target_slot = unsigned_slots[0]
-                
+
+    slot_id = target_slot.get("slotId")
+    slot_name = target_slot.get("name", "常规打卡")
+    start_time = target_slot.get("startTime", "")
+    end_time = target_slot.get("endTime", "")
+    is_signed = target_slot.get("signed", False)
+
+    print(f"    - 匹配目标时段: 【{slot_name}】 (ID: {slot_id})")
+    print(f"    - 开放时间窗口: {start_time} ~ {end_time}")
+
+    # 校验是否已打卡
+    if is_signed and not force:
+        rec = target_slot.get("myRecord") or {}
+        signed_time = format_iso_to_cst(rec.get("signedAt", ""))
+        st = format_record_status(rec.get("status", "normal"))
+        print(f"\n[提示] 时段【{slot_name}】今日已于 {signed_time} ({st}) 完成打卡。")
+        print("    为避免被风控异常检测，已自动停止重复提交 (如需强制打卡请传入 --force)。")
+        return None, None
+
+    # 校验是否在开放时间内
+    if now_str < start_time and not force:
+        print(f"\n[尚未开放] 当前时间 ({now_str}) 尚未到达开放起始时间 ({start_time})。")
+        print(f"    建议在 {start_time} ~ {end_time} 期间再次运行本程序。")
+        return None, None
+
+    if now_str > end_time and not force:
+        print(f"\n[时段已截止] 当前时间 ({now_str}) 已超过截止时间 ({end_time})。")
+        print("    如需尝试补签，请增加 --force 参数。")
+        return None, None
+
+    print("=" * 68)
+    return api, target_slot
+
+def perform_signin(
+    slot_keyword: Optional[str] = None,
+    dry_run: bool = False,
+    force: bool = False,
+    api: Optional[KassingAPI] = None,
+    target_slot: Optional[Dict[str, Any]] = None
+) -> bool:
+    """核心打卡执行全流程"""
+    print("=" * 68)
+    print("        学搭子 (kassing-signin) v1.1 - 自动化智能打卡流程        ")
+    print("=" * 68)
+    
+    # 1. 登录 (已前置鉴权则复用，否则执行登录)
+    if not api:
+        api = KassingAPI()
+        print("[1/5] 正在登录学搭子账号...")
+        try:
+            api.login(DEFAULT_ACCOUNT, DEFAULT_PASSWORD)
+        except Exception as e:
+            print(f"[-] 登录失败: {e}")
+            return False
+    else:
+        print("[1/5] 账号鉴权状态: 已通过 (Token 有效)")
+        
+    user_name = api.user_profile.get("name", DEFAULT_ACCOUNT)
+    
+    # 2. 查询与确认打卡时段
+    now_dt = get_beijing_now()
+    now_str = now_dt.strftime("%H:%M")
+    
+    if not target_slot:
+        print("[2/5] 正在拉取今日打卡时段...")
+        try:
+            slots = api.get_today_slots()
+        except Exception as e:
+            print(f"[-] 获取打卡时段失败: {e}")
+            return False
+            
+        if not slots:
+            print("[-] 今日未配置任何打卡任务，无需打卡。")
+            return True
+            
+        print(f"      当前北京时间: {now_str} (东八区)")
+        
+        if slot_keyword:
+            for s in slots:
+                if slot_keyword in s.get("name", ""):
+                    target_slot = s
+                    break
+            if not target_slot:
+                print(f"[-] 错误: 未找到名称包含 '{slot_keyword}' 的打卡时段。")
+                return False
+        else:
+            # 策略 A: 优先寻找当前时间处于开放时段且未打卡的时段
+            for s in slots:
+                st = s.get("startTime", "")
+                et = s.get("endTime", "")
+                if st <= now_str <= et and not s.get("signed"):
+                    target_slot = s
+                    break
+                    
+            # 策略 B: 若当前无开放时段，查看是否全部已打卡
+            if not target_slot:
+                unsigned_slots = [s for s in slots if not s.get("signed")]
+                if not unsigned_slots:
+                    print("\n[今日完成] 今日所有打卡时段均已成功完成签到，无需重复打卡。")
+                    for idx, s in enumerate(slots, 1):
+                        rec = s.get("myRecord") or {}
+                        signed_time = format_iso_to_cst(rec.get("signedAt", "--"))
+                        st = format_record_status(rec.get("status", "normal"))
+                        print(f"   [{idx}] {s.get('name')}: [已打卡] ({st} · {signed_time})")
+                    return True
+                    
+                # 策略 C: 存在未打卡时段，检测最近的一个时段
+                for s in unsigned_slots:
+                    st = s.get("startTime", "")
+                    if now_str < st:
+                        target_slot = s
+                        break
+                if not target_slot:
+                    target_slot = unsigned_slots[0]
+    else:
+        print("[2/5] 目标打卡时段: 已就绪")
+        print(f"      当前北京时间: {now_str} (东八区)")
+                    
     slot_id = target_slot.get("slotId")
     slot_name = target_slot.get("name", "常规打卡")
     start_time = target_slot.get("startTime", "")
@@ -365,8 +534,9 @@ def perform_signin(slot_keyword: str = None, dry_run: bool = False, force: bool 
     print(f"      [+] 匹配打卡地点: {loc_name} (基准: {hq_lat}, {hq_lng})")
     print(f"      [+] 动态随机定位: ({rand_lat}, {rand_lng}) | 精度 {rand_acc}m | 距基准点 {actual_dist}m (上限 {DISTANCE_RANGE_METERS}m)")
     
-    # 4. 照片选取与水印合成
+    # 4. 照片选取与水印合成 (倒计时结束后重新校准最新时间，确保水印秒级精准)
     print("[3/5] 正在从 PhotoStorage/ 随机抽取照片并生成真实水印...")
+    now_dt = get_beijing_now()
     try:
         input_photo = get_random_input_image()
     except Exception as e:
@@ -425,20 +595,269 @@ def perform_signin(slot_keyword: str = None, dry_run: bool = False, force: bool 
         print(f"[-] 提交打卡记录失败: {e}")
         return False
 
+def pause_cron():
+    """快捷暂停定时自动打卡"""
+    try:
+        with open(PAUSE_FILE, "w", encoding="utf-8") as f:
+            f.write(f"Paused at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        print("[+] 自动打卡已成功暂停！")
+        print("    已进入放假/调休模式，到达打卡时间将自动跳过。")
+        print("    如需恢复自动打卡，可在控制台选择 [5] 一键恢复。")
+    except Exception as e:
+        print(f"[-] 暂停自动打卡失败: {e}")
+
+def resume_cron():
+    """快捷恢复/开启定时自动打卡"""
+    if os.path.exists(PAUSE_FILE):
+        try:
+            os.remove(PAUSE_FILE)
+            print("[+] 自动打卡已恢复正常运行！")
+            print("    已退出放假模式，到达设定时间后将正常执行自动打卡。")
+        except Exception as e:
+            print(f"[-] 恢复自动打卡失败: {e}")
+    else:
+        print("[*] 当前自动打卡本就处于开启运行状态。")
+        print("    如需放假/调休跳过打卡，可在控制台选择 [4] 暂停打卡。")
+
+def setup_cron_interactive(api: Optional[KassingAPI] = None, account: Optional[str] = None, password: Optional[str] = None):
+    """交互式配置系统定时打卡任务"""
+    print("\n" + "=" * 68)
+    print("                 系统定时自动打卡配置向导                 ")
+    print("=" * 68)
+    
+    slots = []
+    try:
+        if not api:
+            target_acc = account or DEFAULT_ACCOUNT
+            target_pwd = password or DEFAULT_PASSWORD
+            if target_acc and target_pwd:
+                temp_api = KassingAPI()
+                temp_api.login(target_acc, target_pwd)
+                slots = temp_api.get_today_slots()
+        else:
+            slots = api.get_today_slots()
+    except Exception as e:
+        print(f"[*] 联网获取学校打卡时段失败 (将使用标准时段): {e}")
+
+    schedules = compute_recommended_schedules(slots)
+    print("\n检测/推荐的定时打卡时段如下:")
+    for idx, item in enumerate(schedules, 1):
+        raw_info = f" (学校开放: {item['raw_start']} ~ {item['raw_end']})" if "raw_start" in item and item["raw_start"] else ""
+        print(f"  [{idx}] {item['name']}{raw_info} -> 推荐定时: {item['time']} (防风控随机延时 {item['delay']} 秒)")
+
+    print("\n请选择打卡周期:")
+    print("  [1] 仅周一至周五工作日打卡 (推荐)")
+    print("  [2] 每天打卡 (包含周末全周打卡)")
+    cycle_choice = input("请输入选项编号 [默认 1]: ").strip()
+    workday_only = (cycle_choice != "2")
+
+    print(f"\n当前推荐打卡时间点: {', '.join(s['time'] for s in schedules)}")
+    custom_times_input = input("如需自定义打卡时间请输入 (英文或中文逗号分隔，如: 08:05, 18:20, 20:45) [直接回车使用推荐]: ").strip()
+
+    if custom_times_input:
+        raw_parts = [p.strip() for p in custom_times_input.replace("，", ",").split(",") if p.strip()]
+        valid_custom = []
+        for idx, p in enumerate(raw_parts, 1):
+            parsed = parse_time_hh_mm(p)
+            if parsed:
+                valid_custom.append({
+                    "name": schedules[idx-1]["name"] if idx <= len(schedules) else f"自定义时段_{idx}",
+                    "time": f"{parsed[0]:02d}:{parsed[1]:02d}",
+                    "delay": 180
+                })
+            else:
+                print(f"[警告] 忽略不合法的时间格式: {p} (正确格式应为 HH:MM，如 08:30)")
+        if valid_custom:
+            schedules = valid_custom
+
+    print(f"\n[*] 正在向操作系统注册定时打卡任务...")
+    ok, msg = install_system_schedule(PROJECT_ROOT, schedules, workday_only=workday_only)
+    if ok:
+        print(f"[+] {msg}")
+        print("    系统定时器将在设定时间自动调度打卡脚本，并记录日志到 logs/cron.log。")
+        print("    如需临时暂停，可在控制台选择 [4] 暂停打卡。")
+    else:
+        print(f"[-] 安装定时任务失败: {msg}")
+        print("    您可以后续手动配置系统定时器，参考项目 README.md 说明。")
+
+def remove_cron_interactive():
+    """交互式卸载系统定时打卡任务"""
+    print("\n" + "=" * 68)
+    print("                 系统定时打卡任务卸载                 ")
+    print("=" * 68)
+    confirm = input("确定要从操作系统中移除本项目的全部定时打卡任务吗？[y/N]: ").strip().lower()
+    if confirm in ["y", "yes"]:
+        ok, msg = uninstall_system_schedule(PROJECT_ROOT)
+        if ok:
+            print(f"[+] {msg}")
+        else:
+            print(f"[-] 卸载失败: {msg}")
+    else:
+        print("[*] 操作已取消。")
+
+def show_cron_status():
+    """查看当前定时自动打卡运行状态"""
+    print("=" * 68)
+    print("                    自动打卡运行状态检测                    ")
+    print("=" * 68)
+    is_paused = os.path.exists(PAUSE_FILE)
+    if is_paused:
+        pause_mtime = datetime.fromtimestamp(os.path.getmtime(PAUSE_FILE)).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"[*] 运行状态: 暂停打卡中 (自 {pause_mtime} 起暂停)")
+        print("    说明: 当前处于放假/调休模式，到点将自动跳过。恢复打卡请在控制台按 [5]")
+    else:
+        print("[*] 运行状态: 正常运行中")
+        print("    说明: 系统将按时自动执行打卡。放假调休请在控制台按 [4] 暂停打卡")
+
+    # 查询定时规则
+    sched_info = get_system_schedule_info()
+    if sched_info["is_configured"]:
+        print("\n[+] 自动打卡时间设置:")
+        if sched_info.get("human_rules"):
+            for hr in sched_info["human_rules"]:
+                print(f"    - {hr}")
+        elif sched_info.get("time_points"):
+            tms = "、".join(sched_info["time_points"])
+            print(f"    - 周期: {sched_info.get('cycle_name', '工作日 (周一至周五)')}")
+            print(f"    - 时间: {tms}")
+        else:
+            print("    - 系统后台已注册打卡任务，到点自动打卡")
+        print("    提示: 如需修改打卡时间请在控制台按 [6]，彻底关闭请按 [7]")
+    else:
+        print("\n[-] 自动打卡设置: 当前尚未配置定时规则")
+        print("    提示: 可在控制台选择 [6] 一键开启后台每天定时打卡")
+
+    # 检查最新日志
+    log_file = os.path.join(PROJECT_ROOT, "logs", "cron.log")
+    if os.path.exists(log_file):
+        print("\n[*] 最近执行日志记录 (logs/cron.log):")
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+                last_lines = [line.strip() for line in lines[-5:] if line.strip()]
+                if last_lines:
+                    for line in last_lines:
+                        print(f"    {line}")
+                else:
+                    print("    (日志文件暂无记录)")
+        except Exception:
+            pass
+    else:
+        print("\n[*] 尚未产生运行日志文件 (首次定时执行后将在此记录日志)")
+    print("=" * 68)
+
+def show_today_records():
+    """查看今日打卡任务与签到记录"""
+    print("=" * 68)
+    print("                    学搭子今日打卡记录查询                    ")
+    print("=" * 68)
+
+    # 1. 检查凭据有效性
+    is_valid, errors = validate_env_config()
+    if not is_valid:
+        print("[错误] 环境配置检查未通过，无法查询记录:")
+        for err in errors:
+            print(f"  - {err}")
+        print("\n请先运行初始化向导进行配置: ./run.sh (首次启动将自动引导) 或 ./run.sh -init")
+        return
+
+    # 2. 登录账号
+    try:
+        api = KassingAPI()
+        api.login(DEFAULT_ACCOUNT, DEFAULT_PASSWORD)
+        user_name = api.user_profile.get("name", DEFAULT_ACCOUNT)
+        user_no = api.user_profile.get("no", DEFAULT_ACCOUNT)
+        print(f"[*] 登录人员: {user_name} (工号/学号: {user_no})")
+    except Exception as e:
+        print(f"[-] 登录失败，无法获取打卡记录: {e}")
+        return
+
+    # 3. 查询今日时段
+    try:
+        slots = api.get_today_slots()
+    except Exception as e:
+        print(f"[-] 查询今日时段失败: {e}")
+        return
+
+    now_dt = get_beijing_now()
+    now_str = now_dt.strftime("%H:%M")
+    print(f"[*] 当前北京时间: {now_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[*] 今日共有 {len(slots)} 个打卡时段任务:\n")
+
+    if not slots:
+        print("    今日暂无开放的打卡任务。")
+    else:
+        for idx, s in enumerate(slots, 1):
+            slot_id = s.get("slotId")
+            name = s.get("name", "未命名时段")
+            start = s.get("startTime", "--:--")
+            end = s.get("endTime", "--:--")
+            signed = s.get("signed", False)
+            my_record = s.get("myRecord") or {}
+
+            if signed:
+                st = format_record_status(my_record.get("status", "normal"))
+                signed_time = format_iso_to_cst(my_record.get("signedAt", ""))
+                loc_info = my_record.get("locationName", "")
+                loc_str = f" [地点: {loc_info}]" if loc_info else ""
+                status_desc = f"[已打卡] ({st} · {signed_time}{loc_str})"
+            elif now_str < start:
+                status_desc = f"[未开始] (开放时段: {start} ~ {end})"
+            elif now_str > end:
+                status_desc = f"[已截止] (开放时段: {start} ~ {end})"
+            else:
+                status_desc = f"[开放打卡中] (截止时间: {end})"
+
+            print(f"  [{idx}] 【{name}】 (时段 ID: {slot_id})")
+            print(f"      - 开放窗口: {start} ~ {end}")
+            print(f"      - 签到状态: {status_desc}")
+
+    # 4. 统计本地生成的水印打卡照片归档
+    if os.path.exists(ARCHIVES_DIR):
+        photos = [
+            f for f in os.listdir(ARCHIVES_DIR)
+            if not f.startswith(".") and f.lower().endswith((".jpg", ".jpeg", ".png"))
+        ]
+        photos.sort(key=lambda x: os.path.getmtime(os.path.join(ARCHIVES_DIR, x)), reverse=True)
+        print("\n[*] 本地近期水印打卡照片归档 (Archives/):")
+        if photos:
+            for p in photos[:3]:
+                ptime = datetime.fromtimestamp(os.path.getmtime(os.path.join(ARCHIVES_DIR, p))).strftime("%Y-%m-%d %H:%M:%S")
+                print(f"    - {p} (生成时间: {ptime})")
+        else:
+            print("    (暂无生成的打卡照片)")
+
+    print("=" * 68)
+
 def main():
     parser = argparse.ArgumentParser(
-        description="学搭子 (kassing.cn) 自动化智能打卡主程序 (v1.0) | 作者: @护盾电池",
+        description="学搭子 (kassing.cn) 自动化智能打卡主程序 (v1.1) | 作者: @护盾电池",
         epilog="""使用示例:
-  python main.py -init           运行环境初始化向导 (.env 凭据配置与底图池初始化)
-  python main.py                 默认打卡流程 (带 10 秒缓冲倒计时)
-  python main.py -y              跳过倒计时立即发起打卡
-  python main.py --dry-run       演练模式 (执行完整计算与图片上传，不写入打卡记录)
-  python main.py --force         强制打卡模式 (即使不在开放时段内或今日已打卡仍强制提交)
-  python main.py --slot 晚自习    指定匹配包含指定关键字的打卡时段
+  [推荐入口]
+  ./run.sh                       Linux/macOS 统一控制台入口 (数字菜单交互，首次自动引导)
+  run.bat                        Windows 统一控制台入口 (支持双击运行或命令行调用)
+
+  [命令行快捷透传]
+  ./run.sh -y                    立即打卡 (跳过倒计时直接提交)
+  ./run.sh -records              查询今日打卡时段任务与签到记录
+  ./run.sh -status               查看定时任务当前运行状态与日志
+  ./run.sh -pause                快捷暂停定时自动打卡 (放假/调休无需关闭系统定时器)
+  ./run.sh -resume               快捷恢复定时自动打卡
+  ./run.sh -setup-cron           一键配置或重新设置系统定时打卡任务
+  ./run.sh -remove-cron          一键卸载并彻底清理系统中的定时打卡任务
+  ./run.sh --dry-run             演练模式 (执行完整计算与图片上传，不写入打卡记录)
+  ./run.sh --force               强制打卡模式 (即使不在开放时段内或今日已打卡仍强制提交)
+  ./run.sh --slot 晚自习          指定匹配包含指定关键字的打卡时段
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--init", "-init", action="store_true", help="运行环境初始化向导 (.env 配置与底图检查)")
+    parser.add_argument("--records", "-records", action="store_true", help="查看今日打卡任务状态与签到记录")
+    parser.add_argument("--setup-cron", "-setup-cron", action="store_true", help="一键配置或重新设置系统定时自动打卡任务")
+    parser.add_argument("--remove-cron", "-remove-cron", action="store_true", help="一键卸载并彻底清理系统中的定时打卡任务")
+    parser.add_argument("--pause", "-pause", action="store_true", help="暂停定时自动打卡 (在后台跳过打卡流程)")
+    parser.add_argument("--resume", "-resume", "--start", "-start", action="store_true", help="恢复/开启定时自动打卡 (清除暂停标识)")
+    parser.add_argument("--status", "-status", action="store_true", help="查看定时打卡当前运行状态 (运行中/已暂停) 及定时器配置")
     parser.add_argument("--no-wait", "-y", action="store_true", help="跳过启动前的 10 秒安全倒计时，直接执行打卡")
     parser.add_argument("--dry-run", action="store_true", help="演练模式 (全流程执行但不真正写入服务器打卡记录)")
     parser.add_argument("--force", action="store_true", help="强制打卡 (即使当前时段未到开放时间或已打过卡仍强制提交)")
@@ -446,7 +865,38 @@ def main():
     
     args = parser.parse_args()
 
-    # 1. 响应 -init / --init 初始化向导
+    # 1. 响应定时任务管理与状态控制命令
+    if args.records:
+        show_today_records()
+        return
+
+    if args.setup_cron:
+        try:
+            setup_cron_interactive()
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n[-] 操作已取消。")
+        return
+
+    if args.remove_cron:
+        try:
+            remove_cron_interactive()
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n[-] 操作已取消。")
+        return
+
+    if args.pause:
+        pause_cron()
+        return
+
+    if args.resume:
+        resume_cron()
+        return
+
+    if args.status:
+        show_cron_status()
+        return
+
+    # 2. 响应 -init / --init 初始化向导
     if args.init:
         try:
             run_init_wizard()
@@ -454,31 +904,61 @@ def main():
             print("\n\n[-] 操作已取消，向导安全退出。")
         return
 
-    # 2. 前置检查: .env 配置文件存在性及参数有效性校验
+    # ==============================================================================
+    # 阶段一：本地运行环境与底图池检测 (全本地离线校验)
+    # ==============================================================================
+    # 1. 配置文件存在性及参数有效性校验
     is_valid, errors = validate_env_config()
     if not is_valid:
-        print("[错误] 环境配置检查未通过:")
+        print("[错误] 本地环境配置检查未通过:")
         for err in errors:
             print(f"  - {err}")
-        print("\n请先在命令行运行初始化向导进行配置:")
-        print("    python main.py -init")
+        print("\n请先运行初始化向导进行配置:")
+        print("    ./run.sh (首次启动将自动引导) 或 ./run.sh -init (Windows: run.bat -init)")
         sys.exit(1)
 
-    # 4. 前置检查: 照片池数量校验 (必须达到 冷却池 + 8 张)
+    # 2. 照片池底图数量校验 (必须达到 冷却池 + 8 张)
     total_photos = count_input_photos()
     min_required = get_min_photo_pool_size(PHOTO_COOLDOWN_COUNT)
     if total_photos < min_required:
-        print("[错误] 照片池底图数量不足，程序拒绝运行。")
+        print("[错误] 本地底图数量不足，打卡终止。")
         print(f"当前设定照片冷却池为 {PHOTO_COOLDOWN_COUNT} 张（系统最低要求 9 张），总照片数量必须达到 冷却池 + 8 = {min_required} 张。")
         print(f"当前 PhotoStorage/ 目录下仅检测到 {total_photos} 张有效照片。")
         print(f"为了防范平台机械重复审查风险，请往 PhotoStorage/ 目录上传更多不同场景下的打卡照片（至少还需补充 {min_required - total_photos} 张）后再运行。")
         sys.exit(1)
 
-    # 5. 执行 10 秒倒计时 (除非显式指定 --no-wait 或 -y)
+    # ==============================================================================
+    # 阶段二：联网鉴权、用户信息确认与任务时段诊断
+    # ==============================================================================
+    api, target_slot = precheck_and_confirm_user(slot_keyword=args.slot, force=args.force)
+    if not api or not target_slot:
+        # 鉴权失败、未开放、已打卡或无任务，前置检测已输出明确提示，安全退出
+        sys.exit(0 if (api is not None) else 1)
+
+    # ==============================================================================
+    # 阶段三：安全倒计时缓冲与打卡执行
+    # ==============================================================================
+    # 检查暂停标识
+    if os.path.exists(PAUSE_FILE):
+        print("[*] 提示: 当前处于暂停自动打卡状态。本次手动打卡不受影响。")
+        print("    如需恢复自动打卡，可在控制台选择 [5] 一键恢复。\n")
+
+    # 执行 10 秒倒计时 (除非显式指定 --no-wait 或 -y)
     if not args.no_wait:
         run_countdown(10)
-        
-    perform_signin(slot_keyword=args.slot, dry_run=args.dry_run, force=args.force)
+    else:
+        print("[*] 检测到跳过倒计时参数 (-y)，立即执行打卡...\n")
+
+    # 提交打卡
+    success = perform_signin(
+        slot_keyword=args.slot,
+        dry_run=args.dry_run,
+        force=args.force,
+        api=api,
+        target_slot=target_slot
+    )
+    if not success:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

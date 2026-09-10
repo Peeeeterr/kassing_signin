@@ -1,7 +1,7 @@
 """
-配置与工具模块 (config.py)
-自动解析 .env / .config 配置文件，支持动态读取用户名密码、在指定范围内随机生成经纬度、
-基于【动态冷却期算法】与【最低照片池联动约束】在 PhotoStorage/ 目录中随机选取底图。
+配置常量与极坐标随机采样模块 (config.py)
+自动解析 .env 配置文件，支持动态读取用户名密码、在指定范围内随机生成经纬度、
+管理照片冷却池调度，以及将 ISO 时间统一格式化为东八区北京时间。
 """
 
 import os
@@ -60,12 +60,11 @@ os.makedirs(PHOTOSTORAGE_DIR, exist_ok=True)
 os.makedirs(ARCHIVES_DIR, exist_ok=True)
 
 def load_env_file(env_path: str = None) -> dict:
-    """轻量级直接解析 .env 或 .config 文件，无需引入额外三方依赖"""
+    """轻量级直接解析 .env 配置文件，无需引入额外三方依赖"""
     if env_path is None:
-        for candidate in [os.path.join(PROJECT_ROOT, ".env"), os.path.join(PROJECT_ROOT, ".config")]:
-            if os.path.exists(candidate):
-                env_path = candidate
-                break
+        candidate = os.path.join(PROJECT_ROOT, ".env")
+        if os.path.exists(candidate):
+            env_path = candidate
                 
     config_dict = {}
     if env_path and os.path.exists(env_path):
@@ -133,13 +132,8 @@ def validate_env_config() -> tuple:
     检查 .env 配置文件是否存在以及内部关键参数的合法性。
     返回: (is_valid: bool, errors: list[str])
     """
-    env_file_exists = False
-    for candidate in [os.path.join(PROJECT_ROOT, ".env"), os.path.join(PROJECT_ROOT, ".config")]:
-        if os.path.exists(candidate):
-            env_file_exists = True
-            break
-
-    if not env_file_exists:
+    env_file_path = os.path.join(PROJECT_ROOT, ".env")
+    if not os.path.exists(env_file_path):
         return False, ["未检测到配置文件 .env"]
 
     errors = []

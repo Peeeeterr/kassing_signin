@@ -1,0 +1,125 @@
+@echo off
+:: ==============================================================================
+:: 学搭子自动化打卡助手统一交互控制台与启动批处理 (run.bat)
+:: 核心功能:
+::   1. 运行环境自检：自动探测 Python 解释器并自动安装缺失的依赖库；
+::   2. 首次运行引导：若未检测到 .env 自动无缝拉起初始化配置向导；
+::   3. 全功能交互菜单：双击运行时弹出友好数字菜单，直观调用各项功能；
+::   4. 命令行直通透传：带参数运行时直接透明转发执行，不弹菜单。
+:: ==============================================================================
+
+chcp 65001 >nul
+cd /d "%~dp0"
+
+:: 1. 检测 Python 解释器路径 (优先读取 .env)
+set PYTHON_BIN=python
+if exist ".env" (
+    for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
+        if /i "%%A"=="PYTHON_BIN" (
+            if not "%%~B"=="" set "PYTHON_BIN=%%~B"
+        )
+    )
+)
+if "%PYTHON_BIN%"=="python" (
+    if exist ".venv\Scripts\python.exe" (
+        set PYTHON_BIN=.venv\Scripts\python.exe
+    ) else if exist "venv\Scripts\python.exe" (
+        set PYTHON_BIN=venv\Scripts\python.exe
+    )
+)
+
+:: 2. 检查核心依赖库并自动修复
+"%PYTHON_BIN%" -c "import requests, PIL" 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo ====================================================================
+    echo [*] 正在检查并自动安装 Python 依赖库 (requirements.txt)...
+    echo ====================================================================
+    "%PYTHON_BIN%" -m pip install -r requirements.txt
+    if %ERRORLEVEL% equ 0 (
+        echo [+] 依赖环境准备完毕！
+    ) else (
+        echo [-] 依赖安装失败，请检查网络连接。
+    )
+)
+
+:: 3. 若带有命令行参数，直接透明透传执行
+if not "%1"=="" (
+    "%PYTHON_BIN%" main.py %*
+    exit /b %ERRORLEVEL%
+)
+
+:: 4. 检测是否已完成环境配置，未完成则拉起向导
+if not exist ".env" (
+    echo ====================================================================
+    echo [*] 检测到项目尚未初始化配置，正在为您启动配置向导...
+    echo ====================================================================
+    "%PYTHON_BIN%" main.py -init
+    echo.
+    echo 向导执行完毕，按任意键进入控制台管理面板...
+    pause >nul
+)
+
+:: 5. 交互式控制台菜单循环
+:menu_loop
+cls
+echo ====================================================================
+echo             学搭子 (kassing-signin) 控制台管理面板                  
+echo ====================================================================
+
+set HAS_SCHED=0
+schtasks /query /fo list 2>nul | findstr /i "Kassing_" >nul 2>&1
+if %ERRORLEVEL% equ 0 set HAS_SCHED=1
+
+if "%HAS_SCHED%"=="0" (
+    echo   [当前状态] 尚未配置自动打卡 (后台定时未启动)
+    echo              提示: 可输入 [6] 一键开启每天定时打卡
+) else if exist ".pause" (
+    echo   [当前状态] 自动打卡已开启 ^| 当前处于: 暂停打卡状态 (放假/调休)
+    echo              提示: 到点将自动跳过，恢复打卡请按 [5]
+) else (
+    echo   [当前状态] 自动打卡已开启 ^| 当前状态: 正常运行中
+    echo              提示: 到点将自动打卡，放假调休暂停请按 [4]
+)
+echo --------------------------------------------------------------------
+echo   【打卡服务】
+echo     [1] 立即签到 (直接提交打卡)
+echo     [2] 常规签到 (带 10 秒缓冲倒计时)
+echo     [3] 查看今日签到记录与状态
+echo.
+echo   【自动打卡与假期管理】
+echo     [4] 暂停自动打卡 (放假/调休跳过打卡)
+echo     [5] 恢复自动打卡 (假期结束恢复正常)
+echo     [6] 开启 / 修改自动打卡时间
+echo     [7] 关闭 / 卸载自动打卡任务
+echo     [8] 查看自动打卡状态与运行日志
+echo.
+echo   【设置与维护】
+echo     [9] 重新运行配置向导 (修改账号密码等)
+echo    [10] 检查并修复运行环境 (自动安装依赖)
+echo.
+echo     [0] 退出控制台
+echo ====================================================================
+set /p choice=请输入选项编号 [0-10]: 
+
+if "%choice%"=="1" "%PYTHON_BIN%" main.py -y & goto end_action
+if "%choice%"=="2" "%PYTHON_BIN%" main.py & goto end_action
+if "%choice%"=="3" "%PYTHON_BIN%" main.py -records & goto end_action
+if "%choice%"=="4" "%PYTHON_BIN%" main.py -pause & goto end_action
+if "%choice%"=="5" "%PYTHON_BIN%" main.py -resume & goto end_action
+if "%choice%"=="6" "%PYTHON_BIN%" main.py -setup-cron & goto end_action
+if "%choice%"=="7" "%PYTHON_BIN%" main.py -remove-cron & goto end_action
+if "%choice%"=="8" "%PYTHON_BIN%" main.py -status & goto end_action
+if "%choice%"=="9" "%PYTHON_BIN%" main.py -init & goto end_action
+if "%choice%"=="10" "%PYTHON_BIN%" -m pip install -r requirements.txt & goto end_action
+if "%choice%"=="0" exit /b 0
+if /i "%choice%"=="q" exit /b 0
+
+echo.
+echo [提示] 输入无效，请输入 0 到 10 之间的数字。
+
+:end_action
+echo.
+echo --------------------------------------------------------------------
+echo 按任意键返回主菜单...
+pause >nul
+goto menu_loop
