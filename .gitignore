@@ -1,0 +1,49 @@
+# 敏感个人配置与凭据 (绝对禁止上传至 GitHub)
+.env
+.config
+.pause
+
+# 照片冷却历史记录与本地状态
+PhotoStorage/.photo_history.json
+PhotoStore/.photo_history.json
+inputs/.photo_history.json
+
+# 个人相片隐私保护 (不追踪真实待打卡生活照和生成的水印照片)
+PhotoStorage/*
+!PhotoStorage/.gitkeep
+!PhotoStorage/sample_test.jpg
+PhotoStore/*
+!PhotoStore/.gitkeep
+!PhotoStore/sample_test.jpg
+inputs/*
+!inputs/.gitkeep
+!inputs/sample_test.jpg
+
+Archives/*
+!Archives/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# IDE 与编辑器配置文件
+.vscode/
+.idea/workspace.xml
+.idea/shelf/
+.idea/*.iml
+
+# 日志与临时文件
+logs/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
