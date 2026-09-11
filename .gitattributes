@@ -1,0 +1,17 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Windows scripts MUST always be CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+
+# Linux/macOS shell scripts MUST always be LF
+*.sh text eol=lf
+
+# Python and text files use LF
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+.env.example text eol=lf
+.gitignore text eol=lf

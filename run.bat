@@ -1,18 +1,15 @@
 @echo off
+chcp 65001 >nul 2>&1
+cd /d "%~dp0"
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONUTF8=1"
+
 :: ==============================================================================
 :: 学搭子自动化打卡助手统一交互控制台与启动批处理 (run.bat)
-:: 核心功能:
-::   1. 运行环境自检：自动探测 Python 解释器并自动安装缺失的依赖库；
-::   2. 首次运行引导：若未检测到 .env 自动无缝拉起初始化配置向导；
-::   3. 全功能交互菜单：双击运行时弹出友好数字菜单，直观调用各项功能；
-::   4. 命令行直通透传：带参数运行时直接透明转发执行，不弹菜单。
 :: ==============================================================================
 
-chcp 65001 >nul
-cd /d "%~dp0"
-
 :: 1. 检测 Python 解释器路径 (优先读取 .env)
-set PYTHON_BIN=python
+set "PYTHON_BIN=python"
 if exist ".env" (
     for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
         if /i "%%A"=="PYTHON_BIN" (
@@ -22,9 +19,9 @@ if exist ".env" (
 )
 if "%PYTHON_BIN%"=="python" (
     if exist ".venv\Scripts\python.exe" (
-        set PYTHON_BIN=.venv\Scripts\python.exe
+        set "PYTHON_BIN=.venv\Scripts\python.exe"
     ) else if exist "venv\Scripts\python.exe" (
-        set PYTHON_BIN=venv\Scripts\python.exe
+        set "PYTHON_BIN=venv\Scripts\python.exe"
     )
 )
 
@@ -74,10 +71,10 @@ if "%HAS_SCHED%"=="0" (
     echo   [当前状态] 尚未配置自动打卡 (后台定时未启动)
     echo              提示: 可输入 [6] 一键开启每天定时打卡
 ) else if exist ".pause" (
-    echo   [当前状态] 自动打卡已开启 ^| 当前处于: 暂停打卡状态 (放假/调休)
+    echo   [当前状态] 自动打卡已开启 · 当前处于: 暂停打卡状态 (放假/调休)
     echo              提示: 到点将自动跳过，恢复打卡请按 [5]
 ) else (
-    echo   [当前状态] 自动打卡已开启 ^| 当前状态: 正常运行中
+    echo   [当前状态] 自动打卡已开启 · 当前状态: 正常运行中
     echo              提示: 到点将自动打卡，放假调休暂停请按 [4]
 )
 echo --------------------------------------------------------------------
