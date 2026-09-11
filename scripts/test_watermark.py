@@ -1,6 +1,6 @@
 """
 【PyCharm 运行脚本 2】独立测试图片水印生成
-从 PhotoStorage/ 文件夹中随机选择一张底图，打上水印并自动归档至 Archives/ 文件夹。
+从 PhotoStorage/ 文件夹中随机选择一张图片，打上水印并自动归档至 Archives/ 文件夹。
 在 PyCharm 中右键 -> Run 'test_watermark' 即可直接运行。
 """
 
@@ -26,7 +26,7 @@ def main():
     print("            学搭子 - 图片水印生成与归档测试            ")
     print("=" * 65)
     
-    # 1. 从 PhotoStorage 文件夹中随机选取底图
+    # 1. 从 PhotoStorage 文件夹中随机选取图片
     try:
         input_image = get_random_input_image()
     except FileNotFoundError as e:
@@ -39,7 +39,7 @@ def main():
     # 3. 水印文字格式化
     wm_text = format_watermark_text(user_name=USER_NAME, slot_name=SLOT_NAME)
     
-    print(f"[*] 随机选中底图: PhotoStorage/{os.path.basename(input_image)}")
+    print(f"[*] 随机选中图片: PhotoStorage/{os.path.basename(input_image)}")
     print(f"[*] 水印文字内容: {wm_text}")
     print(f"[*] 归档输出路径: Archives/{os.path.basename(output_image)}")
     

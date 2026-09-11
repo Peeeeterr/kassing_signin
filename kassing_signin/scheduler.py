@@ -835,7 +835,7 @@ def diagnose_timer_system(project_dir: str) -> Dict[str, Any]:
 
     # 2. 定时规则配置检测
     if not sched_info["is_configured"]:
-        issues.append("未在系统中检测到打卡定时任务。请在控制台运行 [6] 一键开启/设置定时打卡。")
+        issues.append("未在系统中检测到打卡定时任务。请在控制台运行 [5] 一键开启/设置定时打卡。")
     else:
         good_points.append(f"定时打卡规则: 已注册 {sched_info['rules_count']} 项打卡任务，周期: {sched_info['cycle_name']}")
 
@@ -892,7 +892,7 @@ def diagnose_timer_system(project_dir: str) -> Dict[str, Any]:
     pause_file = os.path.join(project_dir, ".pause")
     is_paused = os.path.exists(pause_file)
     if is_paused:
-        warnings.append("当前处于【暂停打卡】状态！到达设定时间将自动跳过。如需恢复请在控制台按 [5] 恢复。")
+        warnings.append("当前处于【暂停打卡】状态！到达设定时间将自动跳过。如需恢复请在控制台按 [4] 恢复。")
     else:
         good_points.append("运行开关状态: 正常开启中")
 
@@ -993,7 +993,7 @@ def test_timer_execution(project_dir: str, dry_run: bool = True) -> Dict[str, An
             "stdout": "",
             "stderr": "测试执行超时 (40秒)",
             "new_logs": [],
-            "summary": "测试执行超时，请检查网络连接或底图处理逻辑。"
+            "summary": "测试执行超时，请检查网络连接或图片处理逻辑。"
         }
     except Exception as e:
         return {

@@ -1,10 +1,10 @@
 """
-学搭子自动打卡助手(v1.2.0)主程序 (main.py)
+学搭子自动打卡助手(v1.2.1)主程序 (main.py)
 作者: @护盾电池
 项目仓库: https://github.com/Peeeeterr/kassing_signin
 
 一键全自动执行：
-  1. 首次运行可通过 -init 命令完成环境与底图初始化向导；
+  1. 首次运行可通过 -init 命令完成环境与图片初始化向导；
   2. 支持 -pause / -resume / -status 快捷控制与检测定时打卡状态；
   3. 运行后默认进行 10 秒缓冲倒计时 (支持 Ctrl+C 取消，或通过 -y 跳过)；
   4. 自动从 .env 登录账号并匹配当前开放时段；
@@ -18,6 +18,7 @@ import os
 import time
 import shutil
 import argparse
+import subprocess
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -46,13 +47,28 @@ from kassing_signin.scheduler import (
 PAUSE_FILE = os.path.join(PROJECT_ROOT, ".pause")
 SKIP_FILE = os.path.join(PROJECT_ROOT, ".skip")
 
+def clear_screen():
+    """跨平台终端清屏"""
+    os.system("cls" if os.name == "nt" else "clear")
+
+def step_wait_clear(delay: float = 0.5):
+    """用户完成输入或敲下回车后，停顿 delay 秒并清屏输出下一步"""
+    time.sleep(delay)
+    clear_screen()
+
+def print_wizard_banner(step_title: str = ""):
+    """初始化向导统一头部横幅"""
+    clear_screen()
+    print("=" * 68)
+    print("            学搭子 (kassing-signin) - 初始化配置向导             ")
+    print("=" * 68)
+    if step_title:
+        print(f"【{step_title}】\n")
+
 def run_init_wizard():
     """首次运行初始化配置向导"""
-    print("=" * 68)
-    print("      学搭子 (kassing-signin) v1.2.0 - 初始化配置向导")
-    print("=" * 68)
-
     # 0. 还原初始状态，清除原用户使用痕迹
+    print_wizard_banner("准备运行环境")
     print("[*] 正在重置环境并清理历史痕迹...")
     
     # a. 清除照片冷却历史
@@ -93,118 +109,127 @@ def run_init_wizard():
                     except Exception:
                         pass
 
-    # d. 清除调休暂停标记 .pause
-    pause_file = os.path.join(PROJECT_ROOT, ".pause")
-    if os.path.exists(pause_file):
-        try:
-            os.remove(pause_file)
-        except Exception:
-            pass
+    # d. 清除调休暂停标记与跳过标记
+    for flag_file in [os.path.join(PROJECT_ROOT, ".pause"), os.path.join(PROJECT_ROOT, ".skip")]:
+        if os.path.exists(flag_file):
+            try:
+                os.remove(flag_file)
+            except Exception:
+                pass
 
     # e. 检查 PhotoStorage/ 是否存在原用户的历史照片
+    valid_img_exts = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
     existing_photos = [
         f for f in os.listdir(PHOTOSTORAGE_DIR)
-        if not f.startswith(".") and os.path.isfile(os.path.join(PHOTOSTORAGE_DIR, f))
+        if not f.startswith(".")
+        and os.path.isfile(os.path.join(PHOTOSTORAGE_DIR, f))
+        and f.lower().endswith(valid_img_exts)
     ] if os.path.exists(PHOTOSTORAGE_DIR) else []
 
     if existing_photos:
-        clean_ans = input(f"[提示] 检测到 PhotoStorage/ 中存在 {len(existing_photos)} 张原有底图，是否清空？[Y/n]: ").strip().lower()
+        clean_ans = input(f"[提示] 检测到 PhotoStorage/ 中存在 {len(existing_photos)} 张原有图片，是否清空？[Y/n]: ").strip().lower()
         if clean_ans in ("", "y", "yes"):
             for f in existing_photos:
                 try:
                     os.remove(os.path.join(PHOTOSTORAGE_DIR, f))
                 except Exception:
                     pass
-            print("[清理] 已清空 PhotoStorage/ 中的历史底图。")
+            print("[+] 已清空 PhotoStorage/ 中的历史图片。")
         else:
-            print("[保留] 已保留 PhotoStorage/ 中的现有底图。")
-
-    print("[+] 环境重置完成。\n")
+            print("[*] 已保留 PhotoStorage/ 中的现有图片。")
+        step_wait_clear(0.5)
+    else:
+        print("[+] 历史痕迹清理完毕。")
+        step_wait_clear(0.5)
 
     # 1. 账号输入
+    print_wizard_banner("步骤 1/5: 设置登录凭据")
     while True:
         account = input("请输入学搭子登录用户名: ").strip()
         if account:
             break
-        print("[提示] 登录用户名不能为空，请重新输入。")
+        print("[-] 用户名不能为空，请重新输入。")
+    step_wait_clear(0.5)
 
     # 2. 密码输入
+    print_wizard_banner("步骤 1/5: 设置登录凭据")
+    print(f"用户名: {account}\n")
     while True:
         password = input("请输入学搭子登录密码: ").strip()
         if password:
             break
-        print("[提示] 登录密码不能为空，请重新输入。")
+        print("[-] 密码不能为空，请重新输入。")
+    step_wait_clear(0.5)
 
-    # 3. 冷却池说明与输入
-    print("\n" + "-" * 68)
-    print("【照片冷却池说明】")
-    print("每次打卡抽取的照片将冻结 N 次（最低为 9，覆盖 3 天 9 次打卡），防范重复照片审查。")
-    print("底图总数须达到「冷却池 + 8 张」，确保轮转池充足。")
-    print("-" * 68)
+    # 3. 冷却池设置
+    print_wizard_banner("步骤 2/5: 照片冷却池设置")
+    print("说明: 每次抽取的图片将冷却 N 次，避免短时间内重复打卡同一张照片。")
+    print("规则: 最低 9 次（覆盖 3 天共 9 次打卡），图库需至少准备「冷却池 + 8」张图片。\n")
 
     while True:
-        cooldown_input = input("请输入冷却池数量 [最低为 9，默认 9]: ").strip()
+        cooldown_input = input("请输入照片冷却次数 [最低 9，回车默认 9]: ").strip()
         if not cooldown_input:
             cooldown_count = 9
             break
         try:
             val = int(cooldown_input)
             if val < 9:
-                print(f"[错误] 冷却池数量不能低于 9 次，当前输入: {val}，请重新输入。")
+                print(f"[-] 冷却次数不能低于 9 次（当前: {val}），请重新输入。")
                 continue
             cooldown_count = val
             break
         except ValueError:
-            print("[错误] 请输入有效的整数数字。")
+            print("[-] 请输入有效的整数数字。")
 
     min_required_photos = cooldown_count + 8
+    step_wait_clear(0.5)
 
-    # 4. 拷贝底图并校验
-    print("\n" + "-" * 68)
-    print("【准备打卡底图】")
-    print(f"请将至少 {min_required_photos} 张照片放入 PhotoStorage/ 目录，规则: 冷却池 {cooldown_count} + 8 张。")
-    print(f"目标路径: {PHOTOSTORAGE_DIR}")
-    print("防风控建议:")
-    print("1. 尽量在不同地点、不同光线、不同衣着下拍照，避免特征过于相似；")
-    print("2. 尽量避免包含窗外日光或室外白天光线，防止晚自习下课夜间打卡时背景天还大亮。")
-    print("支持 jpg/jpeg/png，系统将自动校正朝向与压制防伪水印。")
-    print("-" * 68)
+    # 4. 拷贝图片并校验
+    while True:
+        print_wizard_banner("步骤 2/5: 放入打卡图片")
+        cnt = count_input_photos()
+        print(f"要求: 请将至少 {min_required_photos} 张日常照片放入 PhotoStorage/ 目录。")
+        print(f"路径: {PHOTOSTORAGE_DIR}")
+        print("建议: 尽量选用不同角度、室内常光下的生活照 (.jpg / .jpeg / .png)。\n")
+        print(f"当前图库状态: 已检测到 {cnt} 张有效图片 (目标: {min_required_photos} 张)")
+
+        if cnt >= min_required_photos:
+            print("\n[+] 图片数量充足，校验通过！")
+            step_wait_clear(0.5)
+            break
+        else:
+            print(f"\n[-] 当前还缺少 {min_required_photos - cnt} 张照片。")
+            input("请放入照片至 PhotoStorage/ 后，按回车键重新检测...")
+            step_wait_clear(0.5)
+
+    # 5. 打卡范围与运行环境
+    print_wizard_banner("步骤 3/5: 打卡定位与环境设置")
+    print("基准位置: 总部 (打卡有效半径 300 米)")
+    print("防风控: 系统将在设定半径内随机极坐标偏移，确保打卡坐标自然真实。\n")
 
     while True:
-        confirm = input("放入照片后按回车继续: ").strip().lower()
-        if confirm in ("", "y", "yes"):
-            cnt = count_input_photos()
-            if cnt < min_required_photos:
-                print(f"[提示] 当前仅检测到 {cnt} 张有效照片，还需补充至少 {min_required_photos - cnt} 张。")
-                continue
-            else:
-                print(f"[+] 检测到 PhotoStorage/ 已有 {cnt} 张有效照片，校验通过。")
-                break
-
-    # 5. 打卡范围等其他参数 (带默认值)
-    print("\n" + "-" * 68)
-    print("【其他运行参数】")
-    print("-" * 68)
-
-    while True:
-        dist_input = input("随机定位半径 [米，建议 10 ~ 150，默认 50]: ").strip()
+        dist_input = input("随机定位半径 (米) [建议 10~150，回车默认 50]: ").strip()
         if not dist_input:
             dist_meters = 50.0
             break
         try:
             val = float(dist_input)
             if val <= 0 or val > 150:
-                print(f"[错误] 定位半径必须在 0 到 150 米之间，当前输入: {val}，请重新输入。")
+                print(f"[-] 定位半径必须在 0 到 150 米之间（当前: {val}），请重新输入。")
                 continue
             dist_meters = val
             break
         except ValueError:
-            print("[错误] 请输入有效的数字。")
+            print("[-] 请输入有效的数字。")
+    step_wait_clear(0.5)
 
-    # 定时任务调用的 Python 解释器路径 (默认锁定当前运行的虚拟环境/Conda)
+    # Python 解释器路径确认
     current_python = sys.executable
-    py_input = input(f"定时任务 Python 路径 [默认当前环境: {current_python}]: ").strip()
+    print_wizard_banner("步骤 3/5: 打卡定位与环境设置")
+    print(f"当前检测到的 Python 解释器:\n  {current_python}\n")
+    py_input = input("定时任务调用的 Python 路径 [直接回车使用当前环境]: ").strip()
     python_bin = py_input if py_input else current_python
+    step_wait_clear(0.5)
 
     # 6. 生成并保存 .env
     env_content = f"""# ==============================================================================
@@ -218,23 +243,19 @@ ACCOUNT={account}
 PASSWORD={password}
 
 # c. 距离总部的随机距离范围 (单位: 米)
-#    定位坐标将在以总部为中心、该数值为半径的圆形区域内极坐标均匀随机分布。
-#    总部打卡允许有效半径为 300 米，建议设置在 20 ~ 150 米之间。
 DISTANCE_RANGE_METERS={dist_meters}
 
 # d. 照片冷却期次数 (单位: 次，系统规定最低为 9 次)
-#    锁定 3 天打卡 (每天 3 次 × 3 天 = 9 次)，每次抽中后进入冷却期，规避短周期机械复用。
-#    系统要求底图库总照片数必须达到: 冷却池 + 8 张 (当前至少需要 {min_required_photos} 张)。
 PHOTO_COOLDOWN_COUNT={cooldown_count}
 
 # e. 上传图片最大文件体积限制 (单位: KB，默认 1024 即 1MB)
 MAX_PHOTO_SIZE_KB=1024
 
-# f. 定时任务执行时调用的 Python 解释器绝对路径 (锁定当前虚拟环境/Conda)
+# f. 定时任务执行时调用的 Python 解释器绝对路径
 PYTHON_BIN={python_bin}
 
 # ==============================================================================
-# 系统高级参数 (通常保持默认即可)
+# 系统高级参数 (保持默认即可)
 # ==============================================================================
 HQ_LATITUDE=34.802958
 HQ_LONGITUDE=113.544171
@@ -247,55 +268,58 @@ BASE_URL=https://www.kassing.cn
     with open(env_path, "w", encoding="utf-8") as f:
         f.write(env_content)
 
-    print("\n" + "=" * 68)
-    print("[+] .env 配置文件已成功生成！")
-    print(f"保存位置: {env_path}")
-    print(f"运行环境: {python_bin}")
-    print("=" * 68)
+    # 7. 引导配置系统定时打卡
+    print_wizard_banner("步骤 4/5: 定时自动打卡设置")
+    print("[+] .env 配置文件已成功保存！\n")
+    print("功能: 自动向操作系统注册后台定时打卡任务，到点自动静默签到。")
+    print("说明: 后续亦可随时在控制台开启、修改或暂停。\n")
+    ask_cron = input("是否现在开启系统定时自动打卡？[Y/n] (回车默认 Y): ").strip().lower()
+    step_wait_clear(0.5)
 
-    # 7. 引导一键配置系统定时打卡
-    print("\n" + "-" * 68)
-    print("【系统定时打卡自动化配置】")
-    print("支持自动向操作系统注册后台静默打卡任务。")
-    print("-" * 68)
-    ask_cron = input("是否现在一键配置系统定时自动打卡？[Y/n]: ").strip().lower()
     if ask_cron not in ["n", "no"]:
         setup_cron_interactive(account=account, password=password)
     else:
-        print("\n[*] 已跳过定时任务配置。后续若需开启，可在控制台菜单选择 [6] 随时配置。")
+        print_wizard_banner("步骤 4/5: 定时自动打卡设置")
+        print("[*] 已跳过定时任务配置。后续可在控制台选择 [5] 随时开启。")
+        step_wait_clear(0.8)
 
     # 8. 演练测试运行校验 (可选)
-    print("\n" + "-" * 68)
-    print("【功能测试与演练运行】[可选]")
-    print("支持在不向服务器写入真实记录的前提下，全流程测试打卡与防伪逻辑：")
-    print("  - 账号登录鉴权与个人信息核对")
-    print("  - 时段匹配与随机定位坐标试算")
-    print("  - 底图抽取、EXIF 朝向校正与防伪水印合成")
-    print("  - 模拟照片上传，演练保护生效，不落库打卡记录")
-    print("-" * 68)
-    ask_test = input("是否立即执行一次演练测试运行？[y/N]: ").strip().lower()
+    print_wizard_banner("步骤 5/5: 功能演练与测试")
+    print("说明: 演练模式将模拟打卡全流程（账号鉴权、时段匹配、图片抽选、水印合成与上传）。")
+    print("保护: 演练受沙盒保护，不会向服务器写入真实打卡记录。\n")
+    ask_test = input("是否立即执行一次演练测试运行？[y/N] (回车默认跳过): ").strip().lower()
+    step_wait_clear(0.5)
+
     if ask_test in ["y", "yes"]:
-        print("\n[*] 正在启动演练测试流程...")
+        print_wizard_banner("步骤 5/5: 演练测试执行中")
+        print("[*] 正在启动演练测试流程...\n")
         try:
             test_api = KassingAPI()
             test_api.login(account, password)
             perform_signin(dry_run=True, force=True, api=test_api)
         except Exception as e:
             print(f"[-] 演练测试执行异常: {e}")
-    else:
-        print("\n[*] 已跳过演练测试。")
+        print("\n" + "-" * 68)
+        input("演练执行完毕，按回车键查看配置总结...")
+        step_wait_clear(0.5)
 
-    print("\n" + "=" * 68)
-    print("向导已全部完成！日常使用非常简单，直接启动控制台即可：")
-    print("  - Linux / macOS 用户: 在终端运行 ./run.sh")
-    print("  - Windows 用户:       直接双击运行 run.bat 启动")
-    print("进入控制台后，直接输入数字编号即可直观操作。")
-    print("\n测试版快捷测试命令:")
-    print("  - 演练打卡全流程: ./run.sh --dry-run (Windows: run.bat --dry-run)")
-    print("  - 测试水印生成:   python scripts/test_watermark.py")
-    print("  - 诊断图库与状态: python scripts/check_status.py")
-    print("  - 综合测试控制台: python scripts/menu_console.py")
+    # 9. 总结展示
+    print_wizard_banner("配置向导已完成")
+    print("[+] 账号凭据、图库与运行环境已成功就绪 (.env)")
+    print(f"[+] 运行环境: {python_bin}\n")
+    print("【日常使用推荐】")
+    print("  • 控制台管理:")
+    print("    - Linux / macOS : 在终端运行 ./run.sh")
+    print("    - Windows       : 直接双击 run.bat (或 windows.bat)")
+    print("\n  • 控制台常用快捷功能:")
+    print("    - [1] 常规签到 (带 10 秒倒计时)")
+    print("    - [2] 查看今日签到记录")
+    print("    - [3] 暂停打卡 (放假调休)")
+    print("    - [4] 恢复打卡")
+    print("    - [7] 查看定时打卡状态与日志")
     print("=" * 68)
+    input("\n按回车键进入控制台管理面板...")
+    step_wait_clear(0.5)
 
 def run_countdown(seconds: int = 10):
     """10 秒自动启动倒计时，支持用户按 Ctrl+C 中止"""
@@ -443,7 +467,7 @@ def perform_signin(
 ) -> bool:
     """核心打卡执行全流程"""
     print("=" * 68)
-    print("        学搭子 (kassing-signin) v1.2.0 - 自动化智能打卡流程        ")
+    print("        学搭子 (kassing-signin) v1.2.1 - 自动化智能打卡流程        ")
     print("=" * 68)
     
     # 1. 登录 (已前置鉴权则复用，否则执行登录)
@@ -569,13 +593,13 @@ def perform_signin(
     try:
         input_photo = get_random_input_image()
     except Exception as e:
-        print(f"\n[-] 无法选取底图: {e}")
+        print(f"\n[-] 无法选取图片: {e}")
         return False
         
     output_photo = get_output_image_path(slot_name=slot_name)
     wm_text = format_watermark_text(user_name=user_name, slot_name=slot_name, dt=now_dt)
     
-    print(f"      [+] 选中底图: PhotoStorage/{os.path.basename(input_photo)}")
+    print(f"      [+] 选中图片: PhotoStorage/{os.path.basename(input_photo)}")
     print(f"      [+] 防伪水印: {wm_text}")
     
     try:
@@ -616,7 +640,7 @@ def perform_signin(
         print(f"   [打卡人员] {user_name} (用户名: {DEFAULT_ACCOUNT})")
         print(f"   [打卡时间] {now_dt.strftime('%Y-%m-%d %H:%M:%S')} (北京时间)")
         print(f"   [提交坐标] ({rand_lat}, {rand_lng}) [距{loc_name}中心 {actual_dist}m]")
-        print(f"   [水印底图] Archives/{os.path.basename(output_photo)}")
+        print(f"   [水印图片] Archives/{os.path.basename(output_photo)}")
         print(f"   [响应数据] {res}")
         print("=" * 68)
         return True
@@ -631,7 +655,7 @@ def pause_cron():
             f.write(f"Paused at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         print("[+] 自动打卡已成功暂停！")
         print("    已进入放假/调休模式，到达打卡时间将自动跳过。")
-        print("    如需恢复自动打卡，可在控制台选择 [5] 一键恢复。")
+        print("    如需恢复自动打卡，可在控制台选择 [4] 一键恢复。")
     except Exception as e:
         print(f"[-] 暂停自动打卡失败: {e}")
 
@@ -656,7 +680,7 @@ def resume_cron():
         print("    已恢复正常调度，到达设定时间后将正常执行自动打卡。")
     else:
         print("[*] 当前自动打卡处于正常运行状态。")
-        print("    如需放假/调休暂停打卡，可在控制台选择 [4] 暂停打卡或 [9] 跳过打卡。")
+        print("    如需放假/调休暂停打卡，可在控制台选择 [3] 暂停打卡或 [8] 跳过打卡。")
 
 def skip_cron(count: int = 1) -> bool:
     """
@@ -664,7 +688,7 @@ def skip_cron(count: int = 1) -> bool:
     :param count: 跳过打卡次数，默认值为 1 (跳过单次打卡)
     """
     if count < 1:
-        print("[-] 跳过次数必须大于或等于 1。若需取消跳过，请运行: ./run.sh -cancel-skip 或在控制台按 [5] 恢复。")
+        print("[-] 跳过次数必须大于或等于 1。若需取消跳过，请运行: ./run.sh -cancel-skip 或在控制台按 [4] 恢复。")
         return False
 
     success = set_skip_count(count, PROJECT_ROOT)
@@ -675,7 +699,7 @@ def skip_cron(count: int = 1) -> bool:
         else:
             print(f"[+] 已成功设置【跳过后续 {count} 次打卡】！")
             print(f"    系统将在后续 {count} 次到达打卡时间时自动安全跳过，配额用尽后自动恢复正常。")
-        print("    如需提前取消跳过设置，可运行: ./run.sh -cancel-skip，或在控制台按 [5] 恢复")
+        print("    如需提前取消跳过设置，可运行: ./run.sh -cancel-skip，或在控制台按 [4] 恢复")
     else:
         print("[-] 设置跳过打卡失败，请检查文件写入权限。")
     return success
@@ -695,16 +719,14 @@ def cancel_skip_cron() -> bool:
 
 def skip_cron_interactive():
     """交互式配置跳过打卡次数向导"""
-    print("\n" + "=" * 68)
-    print("                 设置跳过后续定时打卡                 ")
-    print("=" * 68)
+    print_wizard_banner("跳过打卡设置")
     current_skip = get_skip_count(PROJECT_ROOT)
     if current_skip > 0:
-        print(f"[*] 当前已生效跳过设置: 剩余 {current_skip} 次打卡")
+        print(f"[*] 当前生效中: 剩余跳过 {current_skip} 次\n")
 
-    print("适用场景: 今日已在手机手动打卡、或临时请假外出。")
-    print("执行逻辑: 到达打卡时间后自动跳过并递减计数，配额归零后自动恢复正常打卡。")
-    raw = input("\n请输入要跳过的打卡次数 [直接回车默认跳过 1 次]: ").strip()
+    print("适用场景: 今日已在手机端手动打卡、或临时请假调休。")
+    print("规则: 到达打卡时间后自动跳过并递减计数，配额归零后恢复正常打卡。\n")
+    raw = input("请输入要跳过的打卡次数 [直接回车默认跳过 1 次]: ").strip()
     if not raw:
         skip_count = 1
     else:
@@ -712,14 +734,14 @@ def skip_cron_interactive():
             skip_count = int(raw)
         except ValueError:
             print("[-] 输入无效，次数必须为正整数。操作已取消。")
+            step_wait_clear(0.8)
             return
+    step_wait_clear(0.5)
     skip_cron(skip_count)
 
 def setup_cron_interactive(api: Optional[KassingAPI] = None, account: Optional[str] = None, password: Optional[str] = None):
     """交互式配置系统定时打卡任务"""
-    print("\n" + "=" * 68)
-    print("                 系统定时自动打卡配置向导                 ")
-    print("=" * 68)
+    print_wizard_banner("定时自动打卡配置")
     
     slots = []
     try:
@@ -736,19 +758,21 @@ def setup_cron_interactive(api: Optional[KassingAPI] = None, account: Optional[s
         print(f"[*] 联网获取打卡时段失败，将使用标准时段: {e}")
 
     schedules = compute_recommended_schedules(slots)
-    print("\n检测/推荐的定时打卡时段如下:")
+    print("检测到今日打卡时段与推荐时间:")
     for idx, item in enumerate(schedules, 1):
-        raw_info = f"，系统开放: {item['raw_start']} ~ {item['raw_end']}" if "raw_start" in item and item["raw_start"] else ""
+        raw_info = f" (系统开放: {item['raw_start']} ~ {item['raw_end']})" if "raw_start" in item and item["raw_start"] else ""
         print(f"  [{idx}] {item['name']}{raw_info} -> 推荐定时: {item['time']}")
 
     print("\n请选择打卡周期:")
-    print("  [1] 仅周一至周五打卡 [推荐]")
-    print("  [2] 每天打卡")
-    cycle_choice = input("请输入选项编号 [默认 1]: ").strip()
+    print("  [1] 仅周一至周五 (工作日打卡，推荐)")
+    print("  [2] 每天打卡\n")
+    cycle_choice = input("请输入选项编号 [回车默认 1]: ").strip()
     workday_only = (cycle_choice != "2")
+    step_wait_clear(0.5)
 
-    print(f"\n当前推荐打卡时间点: {', '.join(s['time'] for s in schedules)}")
-    custom_times_input = input("如需自定义打卡时间请输入，多个时间用逗号分隔，如 08:05, 18:20, 20:45 [直接回车使用推荐]: ").strip()
+    print_wizard_banner("定时自动打卡配置")
+    print(f"当前推荐打卡时间: {', '.join(s['time'] for s in schedules)}\n")
+    custom_times_input = input("如需自定义打卡时间请输入 (英文逗号分隔，如 08:05, 18:20, 20:45)\n[直接回车使用推荐时间]: ").strip()
 
     if custom_times_input:
         raw_parts = [p.strip() for p in custom_times_input.replace("，", ",").split(",") if p.strip()]
@@ -765,16 +789,18 @@ def setup_cron_interactive(api: Optional[KassingAPI] = None, account: Optional[s
                 print(f"[警告] 忽略不合法的时间格式: {p}，正确格式应为 HH:MM，如 08:30")
         if valid_custom:
             schedules = valid_custom
+    step_wait_clear(0.5)
 
-    print(f"\n[*] 正在向操作系统注册定时打卡任务...")
+    print_wizard_banner("定时自动打卡配置")
+    print("[*] 正在向操作系统注册定时打卡任务...")
     ok, msg = install_system_schedule(PROJECT_ROOT, schedules, workday_only=workday_only)
     if ok:
-        print(f"[+] {msg}")
-        print("    系统定时器将在设定时间自动调度打卡脚本，并记录日志到 logs/cron.log。")
-        print("    如需临时暂停，可在控制台选择 [4] 暂停打卡。")
+        print(f"\n[+] {msg}")
+        print("    系统将在设定时间自动调度打卡脚本，并记录日志到 logs/cron.log。")
+        print("    如需临时暂停，可在控制台选择 [3] 暂停打卡。")
     else:
-        print(f"[-] 安装定时任务失败: {msg}")
-        print("    您可以后续手动配置系统定时器，参考项目 README.md 说明。")
+        print(f"\n[-] 安装定时任务失败: {msg}")
+    step_wait_clear(1.0)
 
 def remove_cron_interactive():
     """交互式卸载系统定时打卡任务"""
@@ -810,15 +836,15 @@ def show_cron_status():
     if is_paused:
         pause_mtime = datetime.fromtimestamp(os.path.getmtime(PAUSE_FILE)).strftime('%Y-%m-%d %H:%M:%S')
         print(f"[*] 运行开关状态: 暂停打卡中，自 {pause_mtime} 起暂停")
-        print("    说明: 当前处于放假调休模式，到点将自动跳过。恢复打卡请在控制台按 [5]")
+        print("    说明: 当前处于放假调休模式，到点将自动跳过。恢复打卡请在控制台按 [4]")
     else:
         print("[*] 运行开关状态: 正常启用中")
-        print("    说明: 系统将按时自动执行打卡。放假调休请在控制台按 [4] 暂停打卡")
+        print("    说明: 系统将按时自动执行打卡。放假调休请在控制台按 [3] 暂停打卡")
 
     if skip_cnt > 0:
         print(f"[*] 跳过打卡状态: 生效中，剩余跳过次数: {skip_cnt} 次")
         print("    说明: 到达设定时间将自动跳过并递减计数，归零后恢复正常打卡。")
-        print("    提示: 取消跳过请在控制台按 [5] 或运行: ./run.sh -cancel-skip")
+        print("    提示: 取消跳过请在控制台按 [4] 或运行: ./run.sh -cancel-skip")
     else:
         print("[*] 跳过打卡状态: 未设定")
 
@@ -833,31 +859,41 @@ def show_cron_status():
         elif sched_info.get("human_rules"):
             for hr in sched_info["human_rules"]:
                 print(f"    - {hr}")
-        print("    提示: 如需修改打卡时间请在控制台按 [6]，彻底关闭请按 [7]")
+        print("    提示: 如需修改打卡时间请在控制台按 [5]，彻底关闭请按 [6]")
     else:
         print("\n[-] 自动打卡设置: 当前尚未配置定时规则")
-        print("    提示: 可在控制台选择 [6] 一键开启后台每天定时打卡")
+        print("    提示: 可在控制台选择 [5] 一键开启后台每天定时打卡")
 
     # 4. 检查最新日志
     log_file = os.path.join(PROJECT_ROOT, "logs", "cron.log")
     if os.path.exists(log_file):
         print("\n[*] 最近执行日志记录: logs/cron.log")
         try:
-            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
-                last_lines = [line.strip() for line in lines[-5:] if line.strip()]
-                if last_lines:
-                    for line in last_lines:
-                        print(f"    {line}")
-                else:
-                    print("    暂无日志记录")
+            with open(log_file, "rb") as f:
+                raw_bytes = f.read()
+            text = ""
+            for enc in ["utf-8", "gbk"]:
+                try:
+                    text = raw_bytes.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if not text:
+                text = raw_bytes.decode("utf-8", errors="replace")
+            lines = text.splitlines()
+            last_lines = [line.strip() for line in lines[-12:] if line.strip()]
+            if last_lines:
+                for line in last_lines:
+                    print(f"    {line}")
+            else:
+                print("    暂无日志记录")
         except Exception:
             pass
     else:
         print("\n[*] 尚未产生运行日志文件，首次定时执行后将自动记录")
 
     print("\n[功能指引] 如需全面测试定时器健康度或仿真触发执行：")
-    print("  - 终端运行: python main.py -test-cron，或在控制台按 [13]")
+    print("  - 终端运行: python main.py -test-cron，或在控制台按 [12]")
     print("=" * 68)
 
 def run_timer_test(dry_run: bool = True):
@@ -948,9 +984,127 @@ def show_today_records():
 
     print("=" * 68)
 
+def get_console_status_header() -> str:
+    """获取控制台顶部状态提示 (自然语言与对应指引)"""
+    try:
+        sched_info = get_system_schedule_info()
+        has_cron = sched_info.get("is_configured", False)
+    except Exception:
+        has_cron = False
+
+    is_paused = os.path.exists(PAUSE_FILE)
+    skip_cnt = get_skip_count(PROJECT_ROOT)
+
+    if not has_cron:
+        return (
+            "  [当前状态] 尚未开启自动打卡\n"
+            "             提示: 可输入 [5] 一键开启每天定时打卡"
+        )
+    elif is_paused:
+        return (
+            "  [当前状态] 自动打卡已开启 | 当前状态: 暂停打卡\n"
+            "             提示: 到点将自动跳过，恢复打卡请按 [4]"
+        )
+    elif skip_cnt > 0:
+        return (
+            f"  [当前状态] 自动打卡已开启 | 当前状态: 跳过打卡生效中\n"
+            f"             提示: 下次打卡将自动跳过并递减，取消/恢复请按 [4]"
+        )
+    else:
+        return (
+            "  [当前状态] 自动打卡已开启 | 当前状态: 正常运行中\n"
+            "             提示: 到点将自动打卡，放假调休暂停请按 [3]"
+        )
+
+def run_interactive_menu():
+    """交互式控制台管理主菜单 (跨平台通用，彻底解决 Windows CMD 批处理代码页乱码与解析报错)"""
+    main_py = os.path.abspath(__file__)
+    python_bin = sys.executable
+
+    while True:
+        os.system("cls" if os.name == "nt" else "clear")
+        print("====================================================================")
+        print("            学搭子 (kassing-signin) 控制台管理面板                  ")
+        print("====================================================================")
+        print(get_console_status_header())
+        print("--------------------------------------------------------------------")
+        print("  【打卡服务】")
+        print("    [1] 常规签到")
+        print("    [2] 查看今日签到记录与状态\n")
+        print("  【自动打卡与假期管理】")
+        print("    [3] 暂停自动打卡")
+        print("    [4] 恢复自动打卡")
+        print("    [5] 开启 / 修改自动打卡时间")
+        print("    [6] 关闭 / 卸载自动打卡任务")
+        print("    [7] 查看自动打卡状态与运行日志")
+        print("    [8] 跳过下次打卡\n")
+        print("  【测试与演练工具】")
+        print("    [9] 演练打卡全流程")
+        print("   [10] 测试本地水印合成")
+        print("   [11] 诊断账号状态与图库健康度")
+        print("   [12] 测试系统定时器与调度健康度\n")
+        print("  【设置与维护】")
+        print("   [13] 重新运行配置向导")
+        print("   [14] 检查并修复运行环境\n")
+        print("    [0] 退出控制台")
+        print("====================================================================")
+
+        try:
+            choice = input("请输入选项编号 [0-14]: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n[*] 已安全退出控制台。")
+            break
+
+        if choice in ("0", "q", "Q"):
+            print("\n[*] 已安全退出控制台。")
+            break
+
+        os.system("cls" if os.name == "nt" else "clear")
+
+        if choice == "1":
+            subprocess.run([python_bin, main_py])
+        elif choice == "2":
+            subprocess.run([python_bin, main_py, "-records"])
+        elif choice == "3":
+            subprocess.run([python_bin, main_py, "-pause"])
+        elif choice == "4":
+            subprocess.run([python_bin, main_py, "-resume"])
+        elif choice == "5":
+            subprocess.run([python_bin, main_py, "-setup-cron"])
+        elif choice == "6":
+            subprocess.run([python_bin, main_py, "-remove-cron"])
+        elif choice == "7":
+            subprocess.run([python_bin, main_py, "-status"])
+        elif choice == "8":
+            subprocess.run([python_bin, main_py, "--skip-interactive"])
+        elif choice == "9":
+            subprocess.run([python_bin, main_py, "--dry-run"])
+        elif choice == "10":
+            subprocess.run([python_bin, os.path.join(PROJECT_ROOT, "scripts", "test_watermark.py")])
+        elif choice == "11":
+            subprocess.run([python_bin, os.path.join(PROJECT_ROOT, "scripts", "check_status.py")])
+        elif choice == "12":
+            subprocess.run([python_bin, os.path.join(PROJECT_ROOT, "scripts", "test_timer.py")])
+        elif choice == "13":
+            subprocess.run([python_bin, main_py, "-init"])
+        elif choice == "14":
+            req_file = os.path.join(PROJECT_ROOT, "requirements.txt")
+            subprocess.run([python_bin, "-m", "pip", "install", "-r", req_file])
+        elif choice in ("y", "Y", "-y"):
+            subprocess.run([python_bin, main_py, "-y"])
+        else:
+            print("\n[提示] 输入无效，请输入 0 到 14 之间的数字选项。")
+
+        print("\n--------------------------------------------------------------------")
+        try:
+            input("按回车键返回主菜单...")
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n[*] 已安全退出控制台。")
+            break
+
 def main():
     parser = argparse.ArgumentParser(
-        description="学搭子 (kassing.cn) 自动化智能打卡主程序 v1.2.0 | 作者: @护盾电池",
+        description="学搭子 (kassing.cn) 自动化智能打卡主程序 v1.2.1 | 作者: @护盾电池",
         epilog="""使用示例:
   [推荐入口]
   ./run.sh                       Linux/macOS 统一控制台入口
@@ -974,6 +1128,7 @@ def main():
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument("--menu", "-menu", action="store_true", help="启动交互式控制台管理主菜单")
     parser.add_argument("--init", "-init", action="store_true", help="运行环境初始化向导")
     parser.add_argument("--records", "-records", action="store_true", help="查看今日打卡任务状态与签到记录")
     parser.add_argument("--setup-cron", "-setup-cron", action="store_true", help="一键配置或重新设置系统定时自动打卡任务")
@@ -991,6 +1146,10 @@ def main():
     parser.add_argument("--slot", default=None, help="指定打卡时段名称关键字，如: 晚自习开始 / 晚自习结束")
     
     args = parser.parse_args()
+
+    if args.menu:
+        run_interactive_menu()
+        return
 
     # 1. 响应定时任务管理与状态控制命令
     if args.records:
@@ -1070,7 +1229,7 @@ def main():
             sys.exit(0)
 
     # ==============================================================================
-    # 阶段一：本地运行环境与底图池检测 (全本地离线校验)
+    # 阶段一：本地运行环境与图库检测 (全本地离线校验)
     # ==============================================================================
     # 1. 配置文件存在性及参数有效性校验
     is_valid, errors = validate_env_config()
@@ -1082,11 +1241,11 @@ def main():
         print("    ./run.sh (首次启动将自动引导) 或 ./run.sh -init (Windows: run.bat -init)")
         sys.exit(1)
 
-    # 2. 照片池底图数量校验 (必须达到 冷却池 + 8 张)
+    # 2. 图库图片数量校验 (必须达到 冷却池 + 8 张)
     total_photos = count_input_photos()
     min_required = get_min_photo_pool_size(PHOTO_COOLDOWN_COUNT)
     if total_photos < min_required:
-        print("[错误] 本地底图数量不足，打卡终止。")
+        print("[错误] 本地图库图片数量不足，打卡终止。")
         print(f"当前设定照片冷却池为 {PHOTO_COOLDOWN_COUNT} 张（系统最低要求 9 张），总照片数量必须达到 冷却池 + 8 = {min_required} 张。")
         print(f"当前 PhotoStorage/ 目录下仅检测到 {total_photos} 张有效照片。")
         print(f"为了防范平台机械重复审查风险，请往 PhotoStorage/ 目录上传更多不同场景下的打卡照片（至少还需补充 {min_required - total_photos} 张）后再运行。")
@@ -1106,7 +1265,7 @@ def main():
     # 检查暂停标识
     if os.path.exists(PAUSE_FILE):
         print("[*] 提示: 当前处于暂停自动打卡状态。本次手动打卡不受影响。")
-        print("    如需恢复自动打卡，可在控制台选择 [5] 一键恢复。\n")
+        print("    如需恢复自动打卡，可在控制台选择 [4] 一键恢复。\n")
 
     # 执行 10 秒倒计时 (除非显式指定 --no-wait 或 -y)
     if not args.no_wait:

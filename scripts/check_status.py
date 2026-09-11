@@ -1,7 +1,7 @@
 """
 【PyCharm 运行脚本 1】查看今日签到状态与配置
 在 PyCharm 中右键 -> Run 'check_status' 即可直接运行。
-自动从 .env 读取账号密码，并全面校验定位参数与照片池防重复指标。
+自动从 .env 读取账号密码，并全面校验定位参数与图库防重复指标。
 """
 
 import sys
@@ -33,12 +33,12 @@ def main():
     r_lat, r_lng, r_acc, r_dist = get_random_location()
     print(f"    - 随机定位试算: 坐标 ({r_lat}, {r_lng})，精度 {r_acc}m，距总部 {r_dist}m")
     
-    # 照片池与冷却机制统计
+    # 图库与冷却机制统计
     total_photos = count_input_photos()
     min_required = get_min_photo_pool_size()
     
-    print(f"\n[*] 照片池健康度与冷却门槛:")
-    print(f"    - PhotoStorage/ 当前底图总数: {total_photos} 张")
+    print(f"\n[*] 图库健康度与冷却门槛:")
+    print(f"    - PhotoStorage/ 当前图片总数: {total_photos} 张")
     print(f"    - 设定冷却期: {PHOTO_COOLDOWN_COUNT} 次")
     print(f"    - 规则最低容量门槛: {min_required} 张")
     

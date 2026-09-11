@@ -2,7 +2,7 @@
 【PyCharm 运行脚本 3】演练打卡全流程 (--dry-run 保护模式)
 在 PyCharm 中右键 -> Run 'dry_run_signin' 即可直接运行。
 1. 自动从 .env 读取账号密码登录；
-2. 自动从 PhotoStorage/ 文件夹随机抽取底图；
+2. 自动从 PhotoStorage/ 文件夹随机抽取图片；
 3. 合成防伪水印并归档到 Archives/ 文件夹；
 4. 上传到服务器云存储；
 5. 在 .env 指定的距离总部的范围内【随机生成经纬度定位】；

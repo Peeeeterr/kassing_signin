@@ -196,7 +196,7 @@ def reload_config():
     HQ_LONGITUDE = _safe_float(get_config_val("HQ_LONGITUDE", "113.544171"), 113.544171)
 
 def count_input_photos() -> int:
-    """统计 PhotoStorage/ 目录下的有效打卡底图总数"""
+    """统计 PhotoStorage/ 目录下的有效打卡图片总数"""
     valid_exts = ("*.jpg", "*.jpeg", "*.png", "*.webp", "*.bmp")
     all_photos = []
     for ext in valid_exts:
@@ -211,8 +211,8 @@ count_photostore_photos = count_input_photos
 
 def get_min_photo_pool_size(cooldown: int = None) -> int:
     """
-    计算照片池最低容量限制:
-    冷却池 + 8 张 (冷却池系统规定最低为 9，对应总底图数最低为 9 + 8 = 17 张)
+    计算图库最低容量限制:
+    冷却池 + 8 张 (冷却池系统规定最低为 9，对应总图片数最低为 9 + 8 = 17 张)
     """
     if cooldown is None:
         cooldown = PHOTO_COOLDOWN_COUNT
@@ -275,8 +275,8 @@ def _save_photo_history(history: list):
 
 def get_random_input_image(record_history: bool = True) -> str:
     """
-    基于【动态冷却期】与【最低照片池容量门槛】从 PhotoStorage/ 中抽取底图：
-    - 校验照片池总数是否达到最低下限 N_min = 冷却池大小 + 缓冲量 Buffer；
+    基于【动态冷却期】与【最低图库容量门槛】从 PhotoStorage/ 中抽取图片：
+    - 校验图库图片总数是否达到最低下限 N_min = 冷却池大小 + 缓冲量 Buffer；
     - 最近选中的 X 张照片进入冷却期，暂时移出候选池；
     - 超过 X 次后自动解除冷却，重返候选池。
     
@@ -293,13 +293,13 @@ def get_random_input_image(record_history: bool = True) -> str:
     total_count = len(all_photos)
     
     if total_count == 0:
-        raise FileNotFoundError(f"PhotoStorage 文件夹 ({PHOTOSTORAGE_DIR}) 中未找到任何可用图片！请放入待打卡底图。")
+        raise FileNotFoundError(f"PhotoStorage 文件夹 ({PHOTOSTORAGE_DIR}) 中未找到任何可用图片！请放入待打卡图片。")
         
-    # 核心约束：校验总照片池是否满足最低限度要求 (冷却池 + 8 张)
+    # 核心约束：校验总图库是否满足最低限度要求 (冷却池 + 8 张)
     min_required = get_min_photo_pool_size()
     if total_count < min_required:
         raise ValueError(
-            f"[错误] 照片池底图数量不足，程序拒绝运行。\n"
+            f"[错误] 图库图片数量不足，程序拒绝运行。\n"
             f"当前设定照片冷却池为 {PHOTO_COOLDOWN_COUNT} 张（系统最低要求 9 张），总照片数量必须达到 冷却池 + 8 = {min_required} 张。\n"
             f"当前 PhotoStorage/ 目录下仅检测到 {total_count} 张有效照片。\n"
             f"为了防范平台机械重复审查风险，请往 PhotoStorage/ 目录上传更多不同场景下的打卡照片（至少还需补充 {min_required - total_count} 张）后再运行。"
@@ -314,8 +314,10 @@ def get_random_input_image(record_history: bool = True) -> str:
     # 2. 计算当前冷却池
     cooldown_photos = set(history[-PHOTO_COOLDOWN_COUNT:]) if PHOTO_COOLDOWN_COUNT > 0 else set()
     
-    # 3. 候选池 = 所有照片 - 冷却中的照片
-    available_filenames = list(all_filenames - cooldown_photos)
+    # 3. 过滤出当前真正可用的候选图片集合
+    available_filenames = [fn for fn in all_filenames if fn not in cooldown_photos]
+    
+    # 极端防崩溃兜底：如果全部在冷却中（理论上由于上面的容量门槛不会发生），回退为最早冷却的那张
     if not available_filenames:
         available_filenames = [history[0]] if history else list(all_filenames)
         
@@ -333,7 +335,7 @@ def get_random_input_image(record_history: bool = True) -> str:
         _save_photo_history(history)
         
     # 打印详细冷却状态日志
-    print(f"      [照片选择机制] 照片池共 {total_count} 张 (门槛: 冷却池 {PHOTO_COOLDOWN_COUNT} + 8 = {min_required} 张) | 冷却期: {PHOTO_COOLDOWN_COUNT} 次 | 可用候选: {len(available_filenames)} 张")
+    print(f"      [图片选择机制] 图库共 {total_count} 张 (门槛: 冷却池 {PHOTO_COOLDOWN_COUNT} + 8 = {min_required} 张) | 冷却期: {PHOTO_COOLDOWN_COUNT} 次 | 可用候选: {len(available_filenames)} 张")
     if cooldown_photos:
         print(f"      [当前冷却中] ({len(cooldown_photos)} 张): {', '.join(cooldown_photos)}")
     print(f"      [本次中选] {selected_filename} (剩余可用候选: {len(available_filenames)} 张)")

@@ -1,19 +1,18 @@
 @echo off
-chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 
 :: ==============================================================================
-:: 学搭子定时打卡任务运行脚本 (Windows 批处理版本 run_windows.bat)
+:: ѧ���Ӷ�ʱ���������нű� (Windows �ƻ�����ִ�ж� run_windows.bat)
 :: ==============================================================================
 
 if not exist "logs" mkdir logs
 set "LOG_FILE=logs\cron.log"
 
-:: 检查是否存在调休/节假日暂停标识文件 (.pause)
+:: ����Ƿ���ڵ���/�ڼ�����ͣ��ʶ�ļ� (.pause)
 if exist ".pause" (
-    echo [%date% %time%] [Task] 检测到 .pause 暂停标识文件，跳过本次打卡任务。 >> "%LOG_FILE%"
+    echo [%date% %time%] [Task] Found .pause flag, skipping scheduled signin task. >> "%LOG_FILE%"
     exit /b 0
 )
 
@@ -29,7 +28,7 @@ if /i "%~1"=="--immediate" (
     goto parse_loop
 )
 echo %~1| findstr /r "^[0-9][0-9]*$" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
+if not errorlevel 1 (
     if "%DO_WAIT%"=="1" (
         set "MAX_DELAY=%~1"
         shift
@@ -44,41 +43,44 @@ goto parse_loop
 if "%DO_WAIT%"=="0" (
     set "RANDOM_DELAY=0"
 ) else (
-    set /a MIN_DELAY=10
-    set /a SPAN=%MAX_DELAY% - %MIN_DELAY%
-    if %SPAN% leq 0 (
+    set /a "MIN_DELAY=10"
+    if %MAX_DELAY% leq 10 (
         set "RANDOM_DELAY=%MAX_DELAY%"
     ) else (
-        set /a RANDOM_DELAY=%MIN_DELAY% + (%RANDOM% %% %SPAN%)
+        set /a "SPAN=%MAX_DELAY% - 10"
+        set /a "RANDOM_DELAY=10 + (%RANDOM% %% SPAN)"
     )
-    echo [%date% %time%] [Task] 触发定时打卡 (最大窗口: %MAX_DELAY%s)，随机等待: %RANDOM_DELAY% 秒... >> "%LOG_FILE%"
-    timeout /t %RANDOM_DELAY% /nobreak >nul
+    echo [%date% %time%] [Task] Scheduled trigger [max delay: %MAX_DELAY%s], random wait: %RANDOM_DELAY%s >> "%LOG_FILE%"
+    timeout /t %RANDOM_DELAY% /nobreak >nul 2>&1
 )
 
-:: 检测 Python 解释器路径 (优先读取 .env)
-set "PYTHON_BIN=python"
-if exist ".env" (
-    for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
-        if /i "%%A"=="PYTHON_BIN" (
-            if not "%%~B"=="" set "PYTHON_BIN=%%~B"
-        )
-    )
+:: ̽�� Python ������
+set "PYTHON_EXE="
+if exist "%~dp0.venv\Scripts\python.exe" set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
+if not defined PYTHON_EXE if exist "%~dp0venv\Scripts\python.exe" set "PYTHON_EXE=%~dp0venv\Scripts\python.exe"
+
+if not defined PYTHON_EXE (
+    where python >nul 2>&1
+    if not errorlevel 1 set "PYTHON_EXE=python"
 )
-if "%PYTHON_BIN%"=="python" (
-    if exist ".venv\Scripts\python.exe" (
-        set "PYTHON_BIN=.venv\Scripts\python.exe"
-    ) else if exist "venv\Scripts\python.exe" (
-        set "PYTHON_BIN=venv\Scripts\python.exe"
-    )
+if not defined PYTHON_EXE (
+    where py >nul 2>&1
+    if not errorlevel 1 set "PYTHON_EXE=py"
+)
+
+if not defined PYTHON_EXE (
+    echo [%date% %time%] [Task Error] Python interpreter not found! >> "%LOG_FILE%"
+    exit /b 1
 )
 
 echo ======================================================== >> "%LOG_FILE%"
-echo [%date% %time%] 开始执行自动打卡任务... >> "%LOG_FILE%"
+echo [%date% %time%] [Task] Starting automated sign-in task... >> "%LOG_FILE%"
+echo [%date% %time%] [Task] Interpreter: %PYTHON_EXE% >> "%LOG_FILE%"
 
-"%PYTHON_BIN%" main.py -y %EXTRA_ARGS% >> "%LOG_FILE%" 2>&1
-set EXIT_CODE=%ERRORLEVEL%
+"%PYTHON_EXE%" "%~dp0main.py" -y %EXTRA_ARGS% >> "%LOG_FILE%" 2>&1
+set "EXIT_CODE=%ERRORLEVEL%"
 
-echo [%date% %time%] 任务执行完毕，退出码: %EXIT_CODE% >> "%LOG_FILE%"
+echo [%date% %time%] [Task] Task execution finished, exit code: %EXIT_CODE% >> "%LOG_FILE%"
 echo ======================================================== >> "%LOG_FILE%"
 
 exit /b %EXIT_CODE%

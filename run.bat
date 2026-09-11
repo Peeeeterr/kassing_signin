@@ -1,137 +1,172 @@
 @echo off
-chcp 65001 >nul 2>&1
+chcp 936 >nul 2>&1
 cd /d "%~dp0"
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 
 :: ==============================================================================
-:: å­¦æ­å­è‡ªåŠ¨åŒ–æ‰“å¡åŠ©æ‰‹ç»Ÿä¸€äº¤äº’æŽ§åˆ¶å°ä¸Žå¯åŠ¨æ‰¹å¤„ç† (run.bat)
+:: Ñ§´î×Ó×Ô¶¯»¯´ò¿¨ÖúÊÖÍ³Ò»½»»¥¿ØÖÆÌ¨ÓëÆô¶¯Åú´¦Àí (run.bat)
 :: ==============================================================================
 
-:: 1. æ£€æµ‹ Python è§£é‡Šå™¨è·¯å¾„ (ä¼˜å…ˆè¯»å– .env)
-set "PYTHON_BIN=python"
-if exist ".env" (
-    for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
-        if /i "%%A"=="PYTHON_BIN" (
-            if not "%%~B"=="" set "PYTHON_BIN=%%~B"
-        )
-    )
-)
-if "%PYTHON_BIN%"=="python" (
-    if exist ".venv\Scripts\python.exe" (
-        set "PYTHON_BIN=.venv\Scripts\python.exe"
-    ) else if exist "venv\Scripts\python.exe" (
-        set "PYTHON_BIN=venv\Scripts\python.exe"
-    )
+:: 1. ¼ì²â Python ½âÊÍÆ÷
+set "PYTHON_EXE="
+
+if exist "%~dp0.venv\Scripts\python.exe" set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
+if not defined PYTHON_EXE if exist "%~dp0venv\Scripts\python.exe" set "PYTHON_EXE=%~dp0venv\Scripts\python.exe"
+
+if not defined PYTHON_EXE (
+    where python >nul 2>&1
+    if not errorlevel 1 set "PYTHON_EXE=python"
 )
 
-:: 2. æ£€æŸ¥æ ¸å¿ƒä¾èµ–åº“å¹¶è‡ªåŠ¨ä¿®å¤
-"%PYTHON_BIN%" -c "import requests, PIL" 2>nul
-if %ERRORLEVEL% neq 0 (
-    echo ====================================================================
-    echo [*] æ­£åœ¨æ£€æŸ¥å¹¶è‡ªåŠ¨å®‰è£… Python ä¾èµ–åº“ (requirements.txt)...
-    echo ====================================================================
-    "%PYTHON_BIN%" -m pip install -r requirements.txt
-    if %ERRORLEVEL% equ 0 (
-        echo [+] ä¾èµ–çŽ¯å¢ƒå‡†å¤‡å®Œæ¯•ï¼
-    ) else (
-        echo [-] ä¾èµ–å®‰è£…å¤±è´¥ï¼Œè¯·æ£€æŸ¥ç½‘ç»œè¿žæŽ¥ã€‚
-    )
+if not defined PYTHON_EXE (
+    where py >nul 2>&1
+    if not errorlevel 1 set "PYTHON_EXE=py"
 )
 
-:: 3. è‹¥å¸¦æœ‰å‘½ä»¤è¡Œå‚æ•°ï¼Œç›´æŽ¥é€æ˜Žé€ä¼ æ‰§è¡Œ
-if not "%1"=="" (
-    "%PYTHON_BIN%" main.py %*
+if not defined PYTHON_EXE (
+    cls
+    echo ====================================================================
+    echo [´íÎó] Î´¼ì²âµ½ Python ÔËÐÐ»·¾³£¡
+    echo ====================================================================
+    echo ÇëÈ·ÈÏ Windows ÉÏÒÑ°²×° Python 3.9 »ò¸ü¸ß°æ±¾¡£
+    echo °²×°Ê±ÇëÎñ±Ø¹´Ñ¡£º
+    echo   [x] Add python.exe to PATH
+    echo.
+    echo ¹Ù·½ÏÂÔØµØÖ·: https://www.python.org/downloads/
+    echo Èô¸Õ¸ÕÍê³É°²×°£¬Çë³¢ÊÔÖØÆôµçÄÔ»òÖØÐÂ´ò¿ªÃüÁîÐÐ¡£
+    echo ====================================================================
+    echo.
+    pause
+    exit /b 1
+)
+
+:: 2. ¼ì²éºËÐÄÒÀÀµ¿â²¢×Ô¶¯ÐÞ¸´
+"%PYTHON_EXE%" -c "import requests, PIL" >nul 2>&1
+if not errorlevel 1 goto :deps_ok
+
+echo ====================================================================
+echo [*] ÕýÔÚ¼ì²é²¢×Ô¶¯°²×° Python ÒÀÀµ¿â [requirements.txt] ...
+echo ====================================================================
+"%PYTHON_EXE%" -m pip install -r "%~dp0requirements.txt"
+if errorlevel 1 (
+    echo [-] ÒÀÀµ°²×°Ê§°Ü£¬Çë¼ì²éÍøÂçÁ¬½Ó¡£
+    pause
+) else (
+    echo [+] ÒÀÀµ»·¾³×¼±¸Íê±Ï£¡
+)
+
+:deps_ok
+
+:: 3. ÃüÁîÐÐ²ÎÊýÍ¸´«Ö´ÐÐ
+if not "%~1"=="" (
+    "%PYTHON_EXE%" "%~dp0main.py" %*
     exit /b %ERRORLEVEL%
 )
 
-:: 4. æ£€æµ‹æ˜¯å¦å·²å®ŒæˆçŽ¯å¢ƒé…ç½®ï¼Œæœªå®Œæˆåˆ™æ‹‰èµ·å‘å¯¼
-if not exist ".env" (
-    echo ====================================================================
-    echo [*] æ£€æµ‹åˆ°é¡¹ç›®å°šæœªåˆå§‹åŒ–é…ç½®ï¼Œæ­£åœ¨ä¸ºæ‚¨å¯åŠ¨é…ç½®å‘å¯¼...
-    echo ====================================================================
-    "%PYTHON_BIN%" main.py -init
-    echo.
-    echo å‘å¯¼æ‰§è¡Œå®Œæ¯•ï¼ŒæŒ‰ä»»æ„é”®è¿›å…¥æŽ§åˆ¶å°ç®¡ç†é¢æ¿...
-    pause >nul
+:: 4. ¼ì²âÊÇ·ñÒÑÍê³É»·¾³ÅäÖÃ£¬Î´Íê³ÉÔòÀ­ÆðÏòµ¼
+if not exist "%~dp0.env" (
+    "%PYTHON_EXE%" "%~dp0main.py" -init
 )
 
-:: 5. äº¤äº’å¼æŽ§åˆ¶å°èœå•å¾ªçŽ¯
+:: 5. ½»»¥Ê½¿ØÖÆÌ¨²Ëµ¥Ñ­»·
 :menu_loop
+chcp 936 >nul 2>&1
 cls
 echo ====================================================================
-echo             å­¦æ­å­ (kassing-signin) æŽ§åˆ¶å°ç®¡ç†é¢æ¿                  
+echo             Ñ§´î×Ó (kassing-signin) ¿ØÖÆÌ¨¹ÜÀíÃæ°å                  
 echo ====================================================================
 
-set HAS_SCHED=0
-schtasks /query /fo list 2>nul | findstr /i "Kassing_" >nul 2>&1
-if %ERRORLEVEL% equ 0 set HAS_SCHED=1
+set "HAS_TASK=0"
+schtasks /query 2>nul | findstr /i "Kassing_" >nul 2>&1
+if not errorlevel 1 set "HAS_TASK=1"
 
-if "%HAS_SCHED%"=="0" (
-    echo   [å½“å‰çŠ¶æ€] å°šæœªé…ç½®è‡ªåŠ¨æ‰“å¡
-    echo              æç¤º: å¯è¾“å…¥ [6] ä¸€é”®å¼€å¯æ¯å¤©å®šæ—¶æ‰“å¡
-) else if exist ".pause" (
-    echo   [å½“å‰çŠ¶æ€] è‡ªåŠ¨æ‰“å¡å·²å¼€å¯ Â· å½“å‰çŠ¶æ€: æš‚åœæ‰“å¡
-    echo              æç¤º: åˆ°ç‚¹å°†è‡ªåŠ¨è·³è¿‡ï¼Œæ¢å¤æ‰“å¡è¯·æŒ‰ [5]
-) else if exist ".skip" (
-    echo   [å½“å‰çŠ¶æ€] è‡ªåŠ¨æ‰“å¡å·²å¼€å¯ Â· å½“å‰çŠ¶æ€: è·³è¿‡æ‰“å¡ç”Ÿæ•ˆä¸­
-    echo              æç¤º: ä¸‹æ¬¡æ‰“å¡å°†è‡ªåŠ¨è·³è¿‡å¹¶é€’å‡ï¼Œå–æ¶ˆ/æ¢å¤è¯·æŒ‰ [5]
-) else (
-    echo   [å½“å‰çŠ¶æ€] è‡ªåŠ¨æ‰“å¡å·²å¼€å¯ Â· å½“å‰çŠ¶æ€: æ­£å¸¸è¿è¡Œä¸­
-    echo              æç¤º: åˆ°ç‚¹å°†è‡ªåŠ¨æ‰“å¡ï¼Œæ”¾å‡è°ƒä¼‘æš‚åœè¯·æŒ‰ [4]
+if "%HAS_TASK%"=="0" (
+    echo   [µ±Ç°×´Ì¬] ÉÐÎ´¿ªÆô×Ô¶¯´ò¿¨
+    echo              ÌáÊ¾: ¿ÉÊäÈë [5] Ò»¼ü¿ªÆôÃ¿Ìì¶¨Ê±´ò¿¨
+    goto :print_menu
 )
-echo --------------------------------------------------------------------
-echo   ã€æ‰“å¡æœåŠ¡ã€‘
-echo     [1] ç«‹å³ç­¾åˆ°
-echo     [2] å¸¸è§„ç­¾åˆ°
-echo     [3] æŸ¥çœ‹ä»Šæ—¥ç­¾åˆ°è®°å½•ä¸ŽçŠ¶æ€
-echo.
-echo   ã€è‡ªåŠ¨æ‰“å¡ä¸Žå‡æœŸç®¡ç†ã€‘
-echo     [4] æš‚åœè‡ªåŠ¨æ‰“å¡
-echo     [5] æ¢å¤è‡ªåŠ¨æ‰“å¡
-echo     [6] å¼€å¯ / ä¿®æ”¹è‡ªåŠ¨æ‰“å¡æ—¶é—´
-echo     [7] å…³é—­ / å¸è½½è‡ªåŠ¨æ‰“å¡ä»»åŠ¡
-echo     [8] æŸ¥çœ‹è‡ªåŠ¨æ‰“å¡çŠ¶æ€ä¸Žè¿è¡Œæ—¥å¿—
-echo     [9] è·³è¿‡ä¸‹æ¬¡æ‰“å¡
-echo.
-echo   ã€æµ‹è¯•ä¸Žæ¼”ç»ƒå·¥å…·ã€‘
-echo    [10] æ¼”ç»ƒæ‰“å¡å…¨æµç¨‹
-echo    [11] æµ‹è¯•æœ¬åœ°æ°´å°åˆæˆ
-echo    [12] è¯Šæ–­è´¦å·çŠ¶æ€ä¸Žåº•å›¾æ± å¥åº·åº¦
-echo    [13] æµ‹è¯•ç³»ç»Ÿå®šæ—¶å™¨ä¸Žè°ƒåº¦å¥åº·åº¦
-echo.
-echo   ã€è®¾ç½®ä¸Žç»´æŠ¤ã€‘
-echo    [14] é‡æ–°è¿è¡Œé…ç½®å‘å¯¼
-echo    [15] æ£€æŸ¥å¹¶ä¿®å¤è¿è¡ŒçŽ¯å¢ƒ
-echo.
-echo     [0] é€€å‡ºæŽ§åˆ¶å°
-echo ====================================================================
-set /p choice=è¯·è¾“å…¥é€‰é¡¹ç¼–å· [0-15]: 
 
-if "%choice%"=="1" cls & "%PYTHON_BIN%" main.py -y & goto end_action
-if "%choice%"=="2" cls & "%PYTHON_BIN%" main.py & goto end_action
-if "%choice%"=="3" cls & "%PYTHON_BIN%" main.py -records & goto end_action
-if "%choice%"=="4" cls & "%PYTHON_BIN%" main.py -pause & goto end_action
-if "%choice%"=="5" cls & "%PYTHON_BIN%" main.py -resume & goto end_action
-if "%choice%"=="6" cls & "%PYTHON_BIN%" main.py -setup-cron & goto end_action
-if "%choice%"=="7" cls & "%PYTHON_BIN%" main.py -remove-cron & goto end_action
-if "%choice%"=="8" cls & "%PYTHON_BIN%" main.py -status & goto end_action
-if "%choice%"=="9" cls & "%PYTHON_BIN%" main.py --skip-interactive & goto end_action
-if "%choice%"=="10" cls & "%PYTHON_BIN%" main.py --dry-run & goto end_action
-if "%choice%"=="11" cls & "%PYTHON_BIN%" scripts\test_watermark.py & goto end_action
-if "%choice%"=="12" cls & "%PYTHON_BIN%" scripts\check_status.py & goto end_action
-if "%choice%"=="13" cls & "%PYTHON_BIN%" scripts\test_timer.py & goto end_action
-if "%choice%"=="14" cls & "%PYTHON_BIN%" main.py -init & goto end_action
-if "%choice%"=="15" cls & "%PYTHON_BIN%" -m pip install -r requirements.txt & goto end_action
+if exist "%~dp0.pause" (
+    echo   [µ±Ç°×´Ì¬] ×Ô¶¯´ò¿¨ÒÑ¿ªÆô - µ±Ç°×´Ì¬: ÔÝÍ£´ò¿¨
+    echo              ÌáÊ¾: µ½µã½«×Ô¶¯Ìø¹ý£¬»Ö¸´´ò¿¨Çë°´ [4]
+    goto :print_menu
+)
+
+if exist "%~dp0.skip" (
+    echo   [µ±Ç°×´Ì¬] ×Ô¶¯´ò¿¨ÒÑ¿ªÆô - µ±Ç°×´Ì¬: Ìø¹ý´ò¿¨ÉúÐ§ÖÐ
+    echo              ÌáÊ¾: ÏÂ´Î´ò¿¨½«×Ô¶¯Ìø¹ý²¢µÝ¼õ£¬È¡Ïû/»Ö¸´Çë°´ [4]
+    goto :print_menu
+)
+
+echo   [µ±Ç°×´Ì¬] ×Ô¶¯´ò¿¨ÒÑ¿ªÆô - µ±Ç°×´Ì¬: Õý³£ÔËÐÐÖÐ
+echo              ÌáÊ¾: µ½µã½«×Ô¶¯´ò¿¨£¬·Å¼Ùµ÷ÐÝÔÝÍ£Çë°´ [3]
+
+:print_menu
+echo --------------------------------------------------------------------
+echo   ¡¾´ò¿¨·þÎñ¡¿
+echo     [1] ³£¹æÇ©µ½
+echo     [2] ²é¿´½ñÈÕÇ©µ½¼ÇÂ¼Óë×´Ì¬
+echo.
+echo   ¡¾×Ô¶¯´ò¿¨Óë¼ÙÆÚ¹ÜÀí¡¿
+echo     [3] ÔÝÍ£×Ô¶¯´ò¿¨
+echo     [4] »Ö¸´×Ô¶¯´ò¿¨
+echo     [5] ¿ªÆô / ÐÞ¸Ä×Ô¶¯´ò¿¨Ê±¼ä
+echo     [6] ¹Ø±Õ / Ð¶ÔØ×Ô¶¯´ò¿¨ÈÎÎñ
+echo     [7] ²é¿´×Ô¶¯´ò¿¨×´Ì¬ÓëÔËÐÐÈÕÖ¾
+echo     [8] Ìø¹ýÏÂ´Î´ò¿¨
+echo.
+echo   ¡¾²âÊÔÓëÑÝÁ·¹¤¾ß¡¿
+echo     [9] ÑÝÁ·´ò¿¨È«Á÷³Ì
+echo    [10] ²âÊÔ±¾µØË®Ó¡ºÏ³É
+echo    [11] Õï¶ÏÕËºÅ×´Ì¬ÓëÍ¼¿â½¡¿µ¶È
+echo    [12] ²âÊÔÏµÍ³¶¨Ê±Æ÷Óëµ÷¶È½¡¿µ¶È
+echo.
+echo   ¡¾ÉèÖÃÓëÎ¬»¤¡¿
+echo    [13] ÖØÐÂÔËÐÐÅäÖÃÏòµ¼
+echo    [14] ¼ì²é²¢ÐÞ¸´ÔËÐÐ»·¾³
+echo.
+echo     [0] ÍË³ö¿ØÖÆÌ¨
+echo ====================================================================
+set "choice="
+set /p choice=ÇëÊäÈëÑ¡Ïî±àºÅ [0-14]: 
+
+if not defined choice goto :menu_loop
+
+if "%choice%"=="1" cls & "%PYTHON_EXE%" "%~dp0main.py" & goto :end_action
+if "%choice%"=="2" cls & "%PYTHON_EXE%" "%~dp0main.py" -records & goto :end_action
+if "%choice%"=="3" cls & "%PYTHON_EXE%" "%~dp0main.py" -pause & goto :end_action
+if "%choice%"=="4" cls & "%PYTHON_EXE%" "%~dp0main.py" -resume & goto :end_action
+if "%choice%"=="5" cls & "%PYTHON_EXE%" "%~dp0main.py" -setup-cron & goto :end_action
+if "%choice%"=="6" cls & "%PYTHON_EXE%" "%~dp0main.py" -remove-cron & goto :end_action
+if "%choice%"=="7" cls & "%PYTHON_EXE%" "%~dp0main.py" -status & goto :end_action
+if "%choice%"=="8" cls & "%PYTHON_EXE%" "%~dp0main.py" --skip-interactive & goto :end_action
+if "%choice%"=="9" cls & "%PYTHON_EXE%" "%~dp0main.py" --dry-run & goto :end_action
+if "%choice%"=="10" cls & "%PYTHON_EXE%" "%~dp0scripts\test_watermark.py" & goto :end_action
+if "%choice%"=="11" cls & "%PYTHON_EXE%" "%~dp0scripts\check_status.py" & goto :end_action
+if "%choice%"=="12" cls & "%PYTHON_EXE%" "%~dp0scripts\test_timer.py" & goto :end_action
+if "%choice%"=="13" cls & "%PYTHON_EXE%" "%~dp0main.py" -init & goto :end_action
+if "%choice%"=="14" goto :act_repair
+if /i "%choice%"=="y" cls & "%PYTHON_EXE%" "%~dp0main.py" -y & goto :end_action
+if /i "%choice%"=="-y" cls & "%PYTHON_EXE%" "%~dp0main.py" -y & goto :end_action
 if "%choice%"=="0" exit /b 0
 if /i "%choice%"=="q" exit /b 0
 
 echo.
-echo [æç¤º] è¾“å…¥æ— æ•ˆï¼Œè¯·è¾“å…¥ 0 åˆ° 15 ä¹‹é—´çš„æ•°å­—ã€‚
+echo [ÌáÊ¾] ÊäÈëÎÞÐ§£¬ÇëÊäÈë 0 µ½ 14 Ö®¼äµÄÊý×Ö¡£
+goto :end_action
+
+:act_repair
+cls
+echo ====================================================================
+echo [*] ÕýÔÚ¼ì²é²¢×Ô¶¯°²×° Python ÒÀÀµ¿â [requirements.txt] ...
+echo ====================================================================
+"%PYTHON_EXE%" -m pip install -r "%~dp0requirements.txt"
+goto :end_action
 
 :end_action
 echo.
 echo --------------------------------------------------------------------
-echo æŒ‰ä»»æ„é”®è¿”å›žä¸»èœå•...
+echo °´ÈÎÒâ¼ü·µ»ØÖ÷²Ëµ¥
 pause >nul
-goto menu_loop
+goto :menu_loop

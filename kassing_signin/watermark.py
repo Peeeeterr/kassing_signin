@@ -239,11 +239,11 @@ if __name__ == "__main__":
                 break
                 
         if not sample_in:
-            # 自动生成一张简单的测试底图
+            # 自动生成一张简单的测试图片
             sample_in = os.path.join(CURRENT_DIR, "test_base.jpg")
             img = Image.new("RGB", (1280, 720), color=(100, 140, 190))
             img.save(sample_in)
-            print(f"[+] 自动生成测试底图: {sample_in}")
+            print(f"[+] 自动生成测试图片: {sample_in}")
 
         sample_out = os.path.join(CURRENT_DIR, "pycharm_debug_watermark.jpg")
         test_text = format_watermark_text(user_name="", slot_name="打卡测试")
