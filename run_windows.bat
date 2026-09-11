@@ -17,10 +17,31 @@ if exist ".pause" (
     exit /b 0
 )
 
-set "MAX_DELAY=%~1"
-if "%MAX_DELAY%"=="" set "MAX_DELAY=180"
+set "EXTRA_ARGS="
+set "DO_WAIT=1"
+set "MAX_DELAY=180"
 
-if "%MAX_DELAY%"=="--immediate" (
+:parse_loop
+if "%~1"=="" goto end_parse_loop
+if /i "%~1"=="--immediate" (
+    set "DO_WAIT=0"
+    shift
+    goto parse_loop
+)
+echo %~1| findstr /r "^[0-9][0-9]*$" >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    if "%DO_WAIT%"=="1" (
+        set "MAX_DELAY=%~1"
+        shift
+        goto parse_loop
+    )
+)
+set "EXTRA_ARGS=%EXTRA_ARGS% %1"
+shift
+goto parse_loop
+:end_parse_loop
+
+if "%DO_WAIT%"=="0" (
     set "RANDOM_DELAY=0"
 ) else (
     set /a MIN_DELAY=10
@@ -54,7 +75,7 @@ if "%PYTHON_BIN%"=="python" (
 echo ======================================================== >> "%LOG_FILE%"
 echo [%date% %time%] 开始执行自动打卡任务... >> "%LOG_FILE%"
 
-"%PYTHON_BIN%" main.py -y >> "%LOG_FILE%" 2>&1
+"%PYTHON_BIN%" main.py -y %EXTRA_ARGS% >> "%LOG_FILE%" 2>&1
 set EXIT_CODE=%ERRORLEVEL%
 
 echo [%date% %time%] 任务执行完毕，退出码: %EXIT_CODE% >> "%LOG_FILE%"

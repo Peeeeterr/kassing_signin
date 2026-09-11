@@ -29,7 +29,7 @@ from kassing_signin.watermark import apply_watermark, format_watermark_text
 
 def main():
     print("=" * 65)
-    print("          学搭子 (kassing.cn) - 打卡全流程演练 (--dry-run)          ")
+    print("              学搭子 - 打卡全流程演练              ")
     print("=" * 65)
     
     api = KassingAPI()
@@ -57,7 +57,7 @@ def main():
         
     slot_id = target_slot.get("slotId")
     slot_name = target_slot.get("name", "晚自习开始")
-    print(f"      [+] 目标时段: {slot_name} (ID: {slot_id})")
+    print(f"      [+] 目标时段: {slot_name} | ID: {slot_id}")
     print(f"      [+] 开放时间: {target_slot.get('startTime')} ~ {target_slot.get('endTime')}")
     print(f"      [+] 当前打卡状态: {'已打卡' if target_slot.get('signed') else '未打卡'}")
     
@@ -74,8 +74,8 @@ def main():
     
     # 3. 随机生成定位坐标
     rand_lat, rand_lng, rand_acc, actual_dist = get_random_location(hq_lat, hq_lng, DISTANCE_RANGE_METERS)
-    print(f"      [+] 匹配打卡地点: {loc_name} (ID: {loc_id})")
-    print(f"      [+] 动态生成随机定位: ({rand_lat}, {rand_lng}), 精度 {rand_acc}m (距{loc_name}中心 {actual_dist}m / 上限 {DISTANCE_RANGE_METERS}m)")
+    print(f"      [+] 匹配打卡地点: {loc_name} | ID: {loc_id}")
+    print(f"      [+] 动态生成随机定位: ({rand_lat}, {rand_lng})，精度 {rand_acc}m，距{loc_name}中心 {actual_dist}m，上限 {DISTANCE_RANGE_METERS}m")
     
     # 4. 从 PhotoStorage 随机取图，合成水印并归档至 Archives
     print("[3/5] 正在从 PhotoStorage/ 随机抽取照片并添加防伪水印...")
@@ -109,11 +109,11 @@ def main():
     print(f"    - slotId:      \"{slot_id}\"")
     print(f"    - locationId:  \"{loc_id}\"")
     print(f"    - photoUrl:    \"{photo_url}\"")
-    print(f"    - latitude:    {rand_lat}  (动态随机)")
-    print(f"    - longitude:   {rand_lng}  (动态随机)")
-    print(f"    - accuracy:    {rand_acc}  (动态随机)")
+    print(f"    - latitude:    {rand_lat}")
+    print(f"    - longitude:   {rand_lng}")
+    print(f"    - accuracy:    {rand_acc}")
     print("-----------------------------------------------------------------")
-    print("🛡️ 【演练保护机制生效】本次运行为 --dry-run 演练，未向服务端真正发起写入！")
+    print("🛡️ 【演练保护机制生效】本次运行为演练模式，未向服务端真正发起写入！")
     print("🎉 照片上传成功，所有参数完全对齐真实打卡协议，待打卡时间开放时即可进行正式打卡。")
 
 if __name__ == "__main__":

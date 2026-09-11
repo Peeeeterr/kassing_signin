@@ -79,7 +79,7 @@ fi
 
 # 5. 交互式控制台菜单循环
 while true; do
-    echo ""
+    clear 2>/dev/null || true
     echo "===================================================================="
     echo "            学搭子 (kassing-signin) 控制台管理面板                  "
     echo "===================================================================="
@@ -91,92 +91,105 @@ while true; do
     fi
 
     if [ "$has_cron" -eq 0 ]; then
-        echo "  [当前状态] 尚未配置自动打卡 (后台定时未启动)"
+        echo "  [当前状态] 尚未配置自动打卡"
         echo "             提示: 可输入 [6] 一键开启每天定时打卡"
     elif [ -f "$PROJECT_DIR/.pause" ]; then
-        echo "  [当前状态] 自动打卡已开启 | 当前处于: 暂停打卡状态 (放假/调休)"
+        echo "  [当前状态] 自动打卡已开启 | 当前状态: 暂停打卡"
         echo "             提示: 到点将自动跳过，恢复打卡请按 [5]"
+    elif [ -f "$PROJECT_DIR/.skip" ]; then
+        echo "  [当前状态] 自动打卡已开启 | 当前状态: 跳过打卡生效中"
+        echo "             提示: 下次打卡将自动跳过并递减，取消/恢复请按 [5]"
     else
         echo "  [当前状态] 自动打卡已开启 | 当前状态: 正常运行中"
         echo "             提示: 到点将自动打卡，放假调休暂停请按 [4]"
     fi
     echo "--------------------------------------------------------------------"
     echo "  【打卡服务】"
-    echo "    [1] 立即签到 (直接提交打卡)"
-    echo "    [2] 常规签到 (带 10 秒缓冲倒计时)"
+    echo "    [1] 立即签到"
+    echo "    [2] 常规签到"
     echo "    [3] 查看今日签到记录与状态"
     echo ""
     echo "  【自动打卡与假期管理】"
-    echo "    [4] 暂停自动打卡 (放假/调休跳过打卡)"
-    echo "    [5] 恢复自动打卡 (假期结束恢复正常)"
+    echo "    [4] 暂停自动打卡"
+    echo "    [5] 恢复自动打卡"
     echo "    [6] 开启 / 修改自动打卡时间"
     echo "    [7] 关闭 / 卸载自动打卡任务"
     echo "    [8] 查看自动打卡状态与运行日志"
+    echo "    [9] 跳过下次打卡"
     echo ""
     echo "  【测试与演练工具】"
-    echo "    [9] 演练打卡全流程 (Dry-run 保护模式，不落库)"
-    echo "   [10] 测试本地水印合成 (校验图片倾斜防伪)"
-    echo "   [11] 诊断账号状态与底图池健康度"
+    echo "   [10] 演练打卡全流程"
+    echo "   [11] 测试本地水印合成"
+    echo "   [12] 诊断账号状态与底图池健康度"
+    echo "   [13] 测试系统定时器与调度健康度"
     echo ""
     echo "  【设置与维护】"
-    echo "   [12] 重新运行配置向导 (修改账号密码等)"
-    echo "   [13] 检查并修复运行环境 (自动安装依赖)"
+    echo "   [14] 重新运行配置向导"
+    echo "   [15] 检查并修复运行环境"
     echo ""
     echo "    [0] 退出控制台"
     echo "===================================================================="
-    read -r -p "请输入选项编号 [0-13]: " choice
+    read -r -p "请输入选项编号 [0-15]: " choice
 
     case "$choice" in
         1)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py" -y
             ;;
         2)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py"
             ;;
         3)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py" -records
             ;;
         4)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py" -pause
             ;;
         5)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py" -resume
             ;;
         6)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py" -setup-cron
             ;;
         7)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py" -remove-cron
             ;;
         8)
-            echo ""
+            clear 2>/dev/null || true
             "$PYTHON_BIN" "$PROJECT_DIR/main.py" -status
             ;;
         9)
-            echo ""
-            "$PYTHON_BIN" "$PROJECT_DIR/main.py" --dry-run
+            clear 2>/dev/null || true
+            "$PYTHON_BIN" "$PROJECT_DIR/main.py" --skip-interactive
             ;;
         10)
-            echo ""
-            "$PYTHON_BIN" "$PROJECT_DIR/scripts/test_watermark.py"
+            clear 2>/dev/null || true
+            "$PYTHON_BIN" "$PROJECT_DIR/main.py" --dry-run
             ;;
         11)
-            echo ""
-            "$PYTHON_BIN" "$PROJECT_DIR/scripts/check_status.py"
+            clear 2>/dev/null || true
+            "$PYTHON_BIN" "$PROJECT_DIR/scripts/test_watermark.py"
             ;;
         12)
-            echo ""
-            "$PYTHON_BIN" "$PROJECT_DIR/main.py" -init
+            clear 2>/dev/null || true
+            "$PYTHON_BIN" "$PROJECT_DIR/scripts/check_status.py"
             ;;
         13)
-            echo ""
+            clear 2>/dev/null || true
+            "$PYTHON_BIN" "$PROJECT_DIR/scripts/test_timer.py"
+            ;;
+        14)
+            clear 2>/dev/null || true
+            "$PYTHON_BIN" "$PROJECT_DIR/main.py" -init
+            ;;
+        15)
+            clear 2>/dev/null || true
             install_dependencies
             ;;
         0|q|Q)
@@ -186,7 +199,7 @@ while true; do
             ;;
         *)
             echo ""
-            echo "[提示] 输入无效，请输入 0 到 13 之间的数字选项。"
+            echo "[提示] 输入无效，请输入 0 到 15 之间的数字选项。"
             ;;
     esac
 

@@ -23,7 +23,7 @@ SLOT_NAME = "常规打卡"   # 水印显示的时段名称
 
 def main():
     print("=" * 65)
-    print("          学搭子 (kassing.cn) - 图片水印生成与归档测试          ")
+    print("            学搭子 - 图片水印生成与归档测试            ")
     print("=" * 65)
     
     # 1. 从 PhotoStorage 文件夹中随机选取底图

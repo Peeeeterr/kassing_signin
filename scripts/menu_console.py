@@ -14,34 +14,48 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+def clear_screen():
+    """跨平台清屏"""
+    os.system("cls" if os.name == "nt" else "clear")
+
 def print_menu():
-    print("\n" + "=" * 56)
-    print("        学搭子 (kassing.cn) - 功能测试与演练控制台        ")
-    print("=" * 56)
-    print("  [1] 查看今日签到状态与照片池健康度 (Check Status)")
-    print("  [2] 测试本地图片生成防伪水印 (Watermark Test)")
-    print("  [3] 演练打卡全流程 (Dry Run 保护模式，不落库)")
+    print("========================================================")
+    print("            学搭子 - 功能测试与演练控制台               ")
+    print("========================================================")
+    print("  [1] 查看今日签到状态与照片池健康度")
+    print("  [2] 测试本地图片生成防伪水印")
+    print("  [3] 演练打卡全流程")
+    print("  [4] 测试系统定时器与调度健康度")
     print("  [0] 退出测试")
-    print("=" * 56)
+    print("========================================================")
 
 def main():
     while True:
+        clear_screen()
         print_menu()
-        choice = input("请输入测试操作编号 (0-3): ").strip()
-        if choice == "1":
-            from scripts import check_status
-            check_status.main()
-        elif choice == "2":
-            from scripts import test_watermark
-            test_watermark.main()
-        elif choice == "3":
-            from scripts import dry_run_signin
-            dry_run_signin.main()
-        elif choice == "0":
+        choice = input("请输入测试操作编号 [0-4]: ").strip()
+        if choice in ["1", "2", "3", "4"]:
+            clear_screen()
+            if choice == "1":
+                from scripts import check_status
+                check_status.main()
+            elif choice == "2":
+                from scripts import test_watermark
+                test_watermark.main()
+            elif choice == "3":
+                from scripts import dry_run_signin
+                dry_run_signin.main()
+            elif choice == "4":
+                from scripts import test_timer
+                test_timer.main()
+            print("\n" + "-" * 56)
+            input("按回车键返回测试控制台主菜单...")
+        elif choice in ["0", "q", "Q"]:
             print("[*] 已退出测试控制台。")
             break
         else:
-            print("[-] 无效输入，请输入 0、1、2 或 3。")
+            print("[-] 无效输入，请输入 0 到 4 之间的数字。")
+            input("按回车键重试...")
 
 if __name__ == "__main__":
     main()

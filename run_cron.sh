@@ -22,18 +22,27 @@ if [ -f "$PROJECT_DIR/.pause" ]; then
     exit 0
 fi
 
-# 随机防风控延时逻辑:
+# 随机防风控延时与参数解析:
 # 1. 默认范围: 10 ~ 180 秒 (约 3 分钟)
-# 2. 支持自定义秒数: 例如传入 300 则在 10 ~ 300 秒 (5 分钟内) 随机等待
-# 3. 传入 --immediate: 跳过等待立即执行
-if [ "$1" = "--immediate" ]; then
+# 2. 支持传入 --immediate: 跳过随机等待立即执行 (用于测试与手动触发)
+# 3. 支持额外参数透传 (如 --dry-run)
+DO_WAIT=1
+MAX_DELAY=180
+EXTRA_ARGS=()
+
+for arg in "$@"; do
+    if [ "$arg" = "--immediate" ]; then
+        DO_WAIT=0
+    elif [[ "$arg" =~ ^[0-9]+$ ]] && [ "$DO_WAIT" -eq 1 ]; then
+        MAX_DELAY="$arg"
+    else
+        EXTRA_ARGS+=("$arg")
+    fi
+done
+
+if [ "$DO_WAIT" -eq 0 ]; then
     RANDOM_DELAY=0
 else
-    if [[ "$1" =~ ^[0-9]+$ ]]; then
-        MAX_DELAY="$1"
-    else
-        MAX_DELAY=180
-    fi
     MIN_DELAY=10
     if [ "$MAX_DELAY" -le "$MIN_DELAY" ]; then
         RANDOM_DELAY=$MAX_DELAY
@@ -76,8 +85,8 @@ echo "========================================================" >> "$LOG_FILE"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始执行自动打卡任务..." >> "$LOG_FILE"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 运行解释器: ${PYTHON_BIN:-未找到}" >> "$LOG_FILE"
 
-# 运行主程序 (-y 跳过交互式倒计时)
-"$PYTHON_BIN" "$PROJECT_DIR/main.py" -y >> "$LOG_FILE" 2>&1
+# 运行主程序 (-y 跳过交互式倒计时，并透传附加参数)
+"$PYTHON_BIN" "$PROJECT_DIR/main.py" -y "${EXTRA_ARGS[@]}" >> "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] 任务执行完毕，退出码: $EXIT_CODE" >> "$LOG_FILE"

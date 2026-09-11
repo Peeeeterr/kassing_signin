@@ -52,7 +52,7 @@ class KassingAPI:
         self.user_profile = body.get("profile", {})
         
         user_name = self.user_profile.get("name", account)
-        print(f"[+] 登录成功！欢迎，{user_name} (工号/学号: {self.user_profile.get('no', account)})")
+        print(f"[+] 登录成功！欢迎，{user_name} | 用户名: {self.user_profile.get('no', account)}")
         return body
 
     def get_today_slots(self) -> List[Dict[str, Any]]:

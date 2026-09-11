@@ -23,13 +23,13 @@ from kassing_signin.kassing_api import KassingAPI
 
 def main():
     print("=" * 68)
-    print("          学搭子 (kassing.cn) - 签到状态与防重复指标检查          ")
+    print("            学搭子 - 签到状态与防重复指标检查            ")
     print("=" * 68)
     
-    print(f"[*] 账号与定位配置 (.env):")
+    print(f"[*] 账号与定位配置:")
     print(f"    - 账号: {DEFAULT_ACCOUNT}")
     print(f"    - 密码: {'*' * len(DEFAULT_PASSWORD)}")
-    print(f"    - 随机定位半径: {DISTANCE_RANGE_METERS} 米 (总部基准点: {HQ_LATITUDE}, {HQ_LONGITUDE})")
+    print(f"    - 随机定位半径: {DISTANCE_RANGE_METERS} 米，总部基准点: {HQ_LATITUDE}, {HQ_LONGITUDE}")
     r_lat, r_lng, r_acc, r_dist = get_random_location()
     print(f"    - 随机定位试算: 坐标 ({r_lat}, {r_lng})，精度 {r_acc}m，距总部 {r_dist}m")
     
@@ -39,11 +39,11 @@ def main():
     
     print(f"\n[*] 照片池健康度与冷却门槛:")
     print(f"    - PhotoStorage/ 当前底图总数: {total_photos} 张")
-    print(f"    - 设定冷却期 (Cooldown): {PHOTO_COOLDOWN_COUNT} 次 (覆盖 3 天打卡)")
-    print(f"    - 规则最低容量门槛: {min_required} 张 (冷却池 {PHOTO_COOLDOWN_COUNT} + 8)")
+    print(f"    - 设定冷却期: {PHOTO_COOLDOWN_COUNT} 次")
+    print(f"    - 规则最低容量门槛: {min_required} 张")
     
     if total_photos >= min_required:
-        print(f"    - 健康度检查: [合格] (当前 {total_photos} 张 >= 最低要求 {min_required} 张)")
+        print(f"    - 健康度检查: [合格]，当前 {total_photos} 张 >= 最低要求 {min_required} 张")
     else:
         print(f"    - 健康度检查: [不合格] 需再补充 {min_required - total_photos} 张照片以满足防重复安全标准")
         
@@ -58,7 +58,7 @@ def main():
         return
         
     now_str = get_beijing_now().strftime("%H:%M")
-    print(f"\n当前本地系统时间 (东八区): {now_str}")
+    print(f"\n当前本地系统时间: {now_str}")
     print(f"检测到今日共有 {len(slots)} 个打卡时段：\n")
     
     for idx, s in enumerate(slots, 1):
@@ -73,22 +73,22 @@ def main():
         if signed and my_record:
             st = format_record_status(my_record.get("status", "normal"))
             time_st = format_iso_to_cst(my_record.get("signedAt", ""))
-            status_text = f"[已打卡] ({st} · {time_st})"
+            status_text = f"[已打卡] {st} · {time_st}"
         elif now_str < start:
-            status_text = f"[未开始] (开放时段: {start} 至 {end})"
+            status_text = f"[未开始] 开放时段: {start} 至 {end}"
         elif now_str > end:
-            status_text = f"[已截止] (开放时段: {start} 至 {end})"
+            status_text = f"[已截止] 开放时段: {start} 至 {end}"
         else:
-            status_text = f"[当前开放中] (有效至: {end})"
+            status_text = f"[当前开放中] 有效至: {end}"
             
-        print(f"[{idx}] {name} (ID: {slot_id})")
+        print(f"[{idx}] {name} | ID: {slot_id}")
         print(f"    - 开放时段: {start} ~ {end}")
         print(f"    - 签到状态: {status_text}")
         print(f"    - 拍照规则: {'需要拍照且带水印' if require_photo else '免拍照'}")
         
         candidates = s.get("candidateLocations", [])
         for c in candidates:
-            print(f"    - 允许地点: {c.get('name')} (基准坐标: {c.get('latitude')}, {c.get('longitude')}, 允许半径: {c.get('radius')}米)")
+            print(f"    - 允许地点: {c.get('name')}，基准坐标: {c.get('latitude')}, {c.get('longitude')}，允许半径: {c.get('radius')}米")
         print("-" * 68)
 
 if __name__ == "__main__":
