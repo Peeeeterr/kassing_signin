@@ -1,4 +1,4 @@
-# 学搭子自动化打卡助手 (kassing-signin) v1.0
+# 学搭子自动化打卡助手 (kassing-signin) v1.1
 
 > 作者：@护盾电池  
 > 项目仓库：https://github.com/Peeeeterr/kassing_signin
@@ -21,20 +21,25 @@
 
 ```text
 kassing-signin/
-├── main.py                 主运行程序（支持 -init 向导、倒计时与命令行参数）
+├── run.sh                  Linux/macOS 统一控制台管理与启动入口
+├── run.bat                 Windows 统一控制台管理批处理（支持双击即用）
+├── main.py                 主运行程序（支持两阶段前置检测、倒计时与参数控制）
 ├── kassing_signin/         核心功能模块包
 │   ├── __init__.py
 │   ├── config.py           配置解析、极坐标离散算法与冷却池调度
 │   ├── kassing_api.py      官方接口通信（登录鉴权、时段查询、对象存储上传、提交打卡）
-│   └── watermark.py        EXIF 朝向校正与 Canvas 阵列水印合成引擎
+│   ├── watermark.py        EXIF 朝向校正与 Canvas 阵列水印合成引擎
+│   └── scheduler.py        跨平台系统定时任务自动化读写管理引擎 (Linux / Windows)
 ├── PhotoStorage/           待打卡底图仓库（需存放 冷却池 + 8 张日常照片）
 ├── Archives/               打卡生成水印照片归档目录
-├── run_cron.sh             Linux 定时执行脚本（含随机延时与日志写入）
-├── run_windows.bat         Windows 批处理执行脚本
-├── run_silent.vbs          Windows 后台静默运行脚本（无控制台窗口）
-├── requirements.txt        Python 依赖清单
-├── .env.example            配置文件模版
-└── .gitignore              Git 版本忽略规则
+├── logs/                   自动打卡执行日志目录 (cron.log)
+├── run_cron.sh             Linux 后台定时执行脚本（供 crontab 调度）
+├── run_windows.bat         Windows 后台定时执行批处理
+├── run_silent.vbs          Windows 后台静默无弹窗运行脚本
+├── requirements.txt        Python 第三方依赖清单
+├── .env.example            环境配置文件模版
+├── CHANGELOG.md            项目版本迭代日志
+└── README.md               项目说明文档
 ```
 
 ---
@@ -48,86 +53,59 @@ kassing-signin/
 
 如果有帮你节省时间，希望你能来点一个Star。
 
-### 步骤一：安装依赖
-环境要求 Python 3.9 或更高版本。在项目根目录下执行：
-```bash
-pip install -r requirements.txt
-```
+### 步骤一：一键运行与初始化向导
+程序要求 Python 3.9+ 环境，首次启动时会自动检测并安装所需依赖。直接启动统一入口脚本即可拉起向导：
+- **Linux 用户**：
+  ```bash
+  ./run.sh
+  ```
+- **Windows 用户**：直接双击 `run.bat`（或在终端运行 `run.bat`）
 
-### 步骤二：运行初始化向导
-首次运行请在终端执行初始化命令：
-```bash
-python main.py -init
-```
 向导将依次引导完成以下配置：
 1. 账号与密码：输入学搭子登录学号/工号及密码；
 2. 冷却池配置：设定照片冷却期次数（系统最低要求 9 次，直接回车默认 9）；
 3. 底图准备与校验：将日常照片拷贝至 `PhotoStorage/` 目录（数量需达到「冷却池 + 8 张」，默认至少 17 张；注意尽量避免包含窗外日光，以防夜间打卡违和），按回车自动校验照片数量；
 4. 运行参数确认：确认定位半径（建议 10 ~ 150 米，直接回车默认 50 米）；
-5. 自动生成 `.env`：保存并完成本地环境初始化。
+5. 自动生成 `.env`：保存并完成本地凭据初始化；
+6. **一键写入系统定时任务（可选）**：向导会自动联网拉取实际打卡时段并推荐打卡时间，回车即可一键写入操作系统定时器（Linux 写入 crontab，Windows 注册任务计划），彻底免去手动配置。
 
-### 步骤三：手动验证打卡
-初始化完成后，可手动运行以验证登录状态与流程闭环：
-```bash
-python main.py
-```
-程序默认带有 10 秒缓冲倒计时（按 Ctrl+C 可中止）。如需跳过倒计时直接打卡，可添加 `-y` 参数：
-```bash
-python main.py -y
-```
+### 步骤二：日常运行与控制台管理
+日常管理推荐直接运行统一入口脚本，程序会自动弹出**全功能交互式控制台菜单**：
+- **Linux 用户**：终端执行 `./run.sh`
+- **Windows 用户**：直接双击 `run.bat`
 
-### 步骤四：自动化定时部署
+在控制台中，只需输入数字编号即可直观执行各项功能：
+```text
+  【打卡服务】
+    [1] 立即签到 (直接提交打卡)
+    [2] 常规签到 (带 10 秒缓冲倒计时)
+    [3] 查看今日签到记录与状态
 
-#### 1. Linux 服务器部署 (crontab)
-赋予执行脚本权限：
-```bash
-chmod +x run_cron.sh
-```
-执行 `crontab -e`，在配置末尾添加以下内容（请将 `/path/to/kassing-signin` 替换为实际项目绝对路径）：
-```cron
-CRON_TZ=Asia/Shanghai
+  【自动打卡与假期管理】
+    [4] 暂停自动打卡 (放假/调休跳过打卡)
+    [5] 恢复自动打卡 (假期结束恢复正常)
+    [6] 开启 / 修改自动打卡时间
+    [7] 关闭 / 卸载自动打卡任务
+    [8] 查看自动打卡状态与运行日志
 
-# 早读打卡 (周一至周五 08:00 启动，300 秒内随机延时，打卡在 08:00 至 08:05)
-00 08 * * 1-5 /path/to/kassing-signin/run_cron.sh 300
+  【设置与维护】
+    [9] 重新运行配置向导 (修改账号密码等)
+   [10] 检查并修复运行环境 (自动安装依赖)
 
-# 晚自习开始打卡 (周一至周五 18:16 启动，180 秒内随机延时，打卡在 18:16 至 18:19)
-16 18 * * 1-5 /path/to/kassing-signin/run_cron.sh 180
-
-# 晚自习结束打卡 (周一至周五 20:40 启动，300 秒内随机延时，打卡在 20:40 至 20:45)
-40 20 * * 1-5 /path/to/kassing-signin/run_cron.sh 300
+    [0] 退出控制台
 ```
 
-#### 2. Windows 电脑部署 (任务计划程序)
-以管理员身份打开命令提示符 (CMD) 或 PowerShell，依次执行以下命令注册周一至周五计划任务（请将 `D:\kassing-signin` 替换为实际项目绝对路径）：
-```cmd
-schtasks /create /tn "Kassing_Morning" /tr "wscript.exe \"D:\kassing-signin\run_silent.vbs\" 300" /sc weekly /d MON,TUE,WED,THU,FRI /st 08:00 /f
-schtasks /create /tn "Kassing_EveningStart" /tr "wscript.exe \"D:\kassing-signin\run_silent.vbs\" 180" /sc weekly /d MON,TUE,WED,THU,FRI /st 18:16 /f
-schtasks /create /tn "Kassing_EveningEnd" /tr "wscript.exe \"D:\kassing-signin\run_silent.vbs\" 300" /sc weekly /d MON,TUE,WED,THU,FRI /st 20:40 /f
-```
-说明：Windows 方案通过 `run_silent.vbs` 调度 `run_windows.bat`，在后台完全静默运行，不会弹出控制台窗口。
-
-#### 3. 调休或节假日手动暂停打卡
-如果遇到调休、放假或特殊情况需要临时取消打卡，可通过以下任意方式处理：
-
-方式一（快速文件标记，推荐）：
-在项目根目录创建名为 `.pause` 的空文件即可临时阻断打卡，无需改动系统定时任务；调休结束删除该文件即可自动恢复：
-- Linux 暂停：`touch .pause`，恢复：`rm .pause`
-- Windows 暂停：`type nul > .pause`，恢复：`del .pause`
-
-方式二（系统定时任务管理）：
-- Linux: 执行 `crontab -e`，在对应打卡规则前添加 `#` 注释保存；恢复时移除 `#`。彻底取消直接删除对应行；
-- Windows: 管理员 CMD 执行以下命令快速禁用任务（恢复时将 `/disable` 换为 `/enable`）：
-  ```cmd
-  schtasks /change /tn "Kassing_Morning" /disable
-  schtasks /change /tn "Kassing_EveningStart" /disable
-  schtasks /change /tn "Kassing_EveningEnd" /disable
-  ```
-  彻底取消并删除任务：
-  ```cmd
-  schtasks /delete /tn "Kassing_Morning" /f
-  schtasks /delete /tn "Kassing_EveningStart" /f
-  schtasks /delete /tn "Kassing_EveningEnd" /f
-  ```
+### 进阶：命令行参数
+支持向入口脚本（Linux: `./run.sh <参数>`，Windows: `run.bat <参数>`）直接传递以下参数：
+- `-y`：立即打卡
+- `-records`：查询今日记录
+- `-status`：查看定时状态
+- `-pause`：暂停自动打卡
+- `-resume`：恢复自动打卡
+- `-setup-cron`：修改定时时间
+- `-remove-cron`：卸载定时任务
+- `--force`：强制打卡
+- `--slot 晚自习`：指定打卡时段
 
 ---
 
@@ -136,5 +114,3 @@ schtasks /create /tn "Kassing_EveningEnd" /tr "wscript.exe \"D:\kassing-signin\r
 查看最新执行日志：
 - Linux 终端：`tail -n 50 logs/cron.log`
 - Windows：使用文本编辑器打开 `logs\cron.log`
-
-

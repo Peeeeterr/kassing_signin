@@ -1,49 +1,116 @@
-# 敏感个人配置与凭据 (绝对禁止上传至 GitHub)
+# ==============================================================================
+# 敏感凭据与个人隐私配置 (绝不上传至 GitHub)
+# ==============================================================================
 .env
+.env.*
+!.env.example
 .config
 .pause
 
-# 照片冷却历史记录与本地状态
-PhotoStorage/.photo_history.json
-PhotoStore/.photo_history.json
-inputs/.photo_history.json
+# ==============================================================================
+# AI 辅助工具与工作区规则 (Agent & Local AI Configs)
+# ==============================================================================
+AGENTS.md
+GEMINI.md
+.agents/
+.agent/
+_agents/
+_agent/
+.claude/
+.cursor/
+.copilot/
 
-# 个人相片隐私保护 (不追踪真实待打卡生活照和生成的水印照片)
+# ==============================================================================
+# 照片池与归档隐私保护 (不追踪真实生活照和生成的水印照片)
+# ==============================================================================
 PhotoStorage/*
 !PhotoStorage/.gitkeep
-!PhotoStorage/sample_test.jpg
+!PhotoStorage/*.txt
+
 PhotoStore/*
 !PhotoStore/.gitkeep
-!PhotoStore/sample_test.jpg
+!PhotoStore/*.txt
+
 inputs/*
 !inputs/.gitkeep
-!inputs/sample_test.jpg
 
 Archives/*
 !Archives/.gitkeep
+
 outputs/*
 !outputs/.gitkeep
 
-# Python 缓存与虚拟环境
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-env/
-venv/
-*.egg-info/
-dist/
-build/
+# 本地打卡历史记录
+*.photo_history.json
+.photo_history.json
+**/.photo_history.json
 
-# IDE 与编辑器配置文件
-.vscode/
-.idea/workspace.xml
-.idea/shelf/
-.idea/*.iml
+# 本地测试生成的图片
+test_*.jpg
+test_*.jpeg
+test_*.png
+*_test.jpg
+sample_*.jpg
+last_watermarked.jpg
 
-# 日志与临时文件
+# ==============================================================================
+# 运行时日志与临时文件
+# ==============================================================================
 logs/
 *.log
 *.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
+
+# ==============================================================================
+# Python 编译缓存与虚拟环境
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================================================================
+# IDE 与编辑器配置文件
+# ==============================================================================
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.iml
+
+# ==============================================================================
+# 打包与发布归档 (避免将大体积 zip 上传至 git 历史)
+# ==============================================================================
+*.zip
+*.tar.gz
+*.rar
+*.7z
