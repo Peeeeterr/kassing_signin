@@ -346,11 +346,16 @@ def get_installed_windows_tasks() -> List[str]:
     """查询 Windows 下已注册的打卡计划任务名称"""
     try:
         cmd = ["schtasks", "/query", "/fo", "list"]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        res = subprocess.run(cmd, capture_output=True, timeout=10)
+        try:
+            out_text = res.stdout.decode('utf-8')
+        except UnicodeDecodeError:
+            out_text = res.stdout.decode('gbk', errors='ignore')
+        
         if res.returncode != 0:
             return []
         found = []
-        for line in res.stdout.splitlines():
+        for line in out_text.splitlines():
             line_s = line.strip()
             if line_s.startswith("TaskName:") or line_s.startswith("任务名:"):
                 tname = line_s.split(":", 1)[1].strip().lstrip("\\")
@@ -392,11 +397,18 @@ def install_windows_tasks(project_dir: str, schedules: List[Dict[str, Any]], day
         ]
 
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            res = subprocess.run(cmd, capture_output=True, timeout=10)
+            try:
+                out_text = res.stdout.decode('utf-8')
+                err_text = res.stderr.decode('utf-8')
+            except UnicodeDecodeError:
+                out_text = res.stdout.decode('gbk', errors='ignore')
+                err_text = res.stderr.decode('gbk', errors='ignore')
+            
             if res.returncode == 0:
                 created_tasks.append(task_name)
             else:
-                errors.append(f"{task_name} 创建失败: {res.stderr.strip() or res.stdout.strip()}")
+                errors.append(f"{task_name} 创建失败: {err_text.strip() or out_text.strip()}")
         except Exception as e:
             errors.append(f"{task_name} 执行异常: {e}")
 
@@ -415,11 +427,16 @@ def uninstall_windows_tasks() -> Tuple[bool, str]:
     for tname in tasks:
         try:
             cmd = ["schtasks", "/delete", "/tn", tname, "/f"]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            res = subprocess.run(cmd, capture_output=True, timeout=10)
+            try:
+                err_text = res.stderr.decode('utf-8')
+            except UnicodeDecodeError:
+                err_text = res.stderr.decode('gbk', errors='ignore')
+                
             if res.returncode == 0:
                 deleted.append(tname)
             else:
-                errors.append(f"删除 {tname} 失败: {res.stderr.strip()}")
+                errors.append(f"删除 {tname} 失败: {err_text.strip()}")
         except Exception as e:
             errors.append(f"删除 {tname} 异常: {e}")
 
@@ -747,8 +764,13 @@ def check_daemon_status() -> Dict[str, Any]:
 
     elif is_win:
         try:
-            res = subprocess.run(["sc", "query", "Schedule"], capture_output=True, text=True, timeout=5)
-            if "RUNNING" in res.stdout:
+            res = subprocess.run(["sc", "query", "Schedule"], capture_output=True, timeout=5)
+            try:
+                out_text = res.stdout.decode('utf-8')
+            except UnicodeDecodeError:
+                out_text = res.stdout.decode('gbk', errors='ignore')
+                
+            if "RUNNING" in out_text:
                 return {
                     "is_active": True,
                     "service_name": "Task Scheduler",

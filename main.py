@@ -1,5 +1,5 @@
 """
-学搭子自动打卡助手(v1.2.1)主程序 (main.py)
+学搭子自动打卡助手(v1.2.2)主程序 (main.py)
 作者: @护盾电池
 项目仓库: https://github.com/Peeeeterr/kassing_signin
 

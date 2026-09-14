@@ -1,4 +1,4 @@
-# 学搭子自动化打卡助手 (kassing-signin) v1.2.1
+# 学搭子自动化打卡助手 (kassing-signin) v1.2.2
 
 > 作者：@护盾电池  
 > 项目仓库：https://github.com/Peeeeterr/kassing_signin
